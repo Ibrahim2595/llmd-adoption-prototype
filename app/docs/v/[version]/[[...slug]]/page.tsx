@@ -29,6 +29,10 @@ function Breadcrumb({ version, slug }: { version: string; slug: string[] }) {
   )
 }
 
+// Any path not returned by generateStaticParams is a hard 404 — never tries to
+// render a versioned page whose .mdx file doesn't exist.
+export const dynamicParams = false
+
 interface PageProps {
   params: { version: string; slug?: string[] }
 }

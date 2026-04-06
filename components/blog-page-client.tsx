@@ -11,10 +11,6 @@ function formatDate(dateStr: string): string {
   return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
 }
 
-function getYear(dateStr: string): string {
-  return new Date(dateStr + 'T00:00:00').getFullYear().toString()
-}
-
 function avatarUrl(author: Author): string | undefined {
   if (author.github) return `https://github.com/${author.github}.png`
   return author.avatar
@@ -54,40 +50,27 @@ function AuthorRow({ authors, size = 8 }: { authors: Author[]; size?: number }) 
 }
 
 function PostsList({ posts }: { posts: BlogPost[] }) {
-  const byYear: Record<string, BlogPost[]> = {}
-  for (const post of posts) {
-    const year = getYear(post.date)
-    if (!byYear[year]) byYear[year] = []
-    byYear[year].push(post)
-  }
-  const years = Object.keys(byYear).sort((a, b) => Number(b) - Number(a))
-
   return (
     <div className="flex gap-12">
-      {/* Left sidebar: year + post title navigation */}
+      {/* Left sidebar: post title navigation */}
       <aside className="hidden lg:block w-[220px] shrink-0">
         <div className="sticky top-8">
           <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-4">
             Recent posts
           </p>
-          {years.map((year) => (
-            <div key={year} className="mb-6">
-              <p className="text-sm font-semibold text-gray-900 dark:text-gray-50 mb-2">{year}</p>
-              <ul className="flex flex-col">
-                {byYear[year].map((post) => (
-                  <li key={post.slug} className="flex items-start gap-2 py-2">
-                    <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-gray-600 shrink-0" />
-                    <Link
-                      href={`/blog/${post.slug}`}
-                      className="text-sm text-gray-700 dark:text-gray-300 hover:text-purple transition-colors leading-snug block"
-                    >
-                      {post.title}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+          <ul className="flex flex-col">
+            {posts.map((post) => (
+              <li key={post.slug} className="flex items-start gap-2 py-2">
+                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-gray-600 shrink-0" />
+                <Link
+                  href={`/blog/${post.slug}`}
+                  className="text-sm text-gray-700 dark:text-gray-300 hover:text-purple transition-colors leading-snug block"
+                >
+                  {post.title}
+                </Link>
+              </li>
+            ))}
+          </ul>
         </div>
       </aside>
 

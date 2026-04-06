@@ -20,11 +20,17 @@ function getSlugPath(pathname: string): string {
 }
 
 function buildUrl(version: VersionEntry, slugPath: string): string {
-  if (version.isLatest) return `/docs/${slugPath}`
-  return `/docs/v/${version.version}/${slugPath}`
+  if (version.isLatest) return slugPath ? `/docs/${slugPath}` : '/docs'
+  return slugPath ? `/docs/v/${version.version}/${slugPath}` : `/docs/v/${version.version}`
 }
 
-export function VersionSwitcher() {
+interface VersionSwitcherProps {
+  /** Slug paths (e.g. "core-concepts/inference-gateway") that exist per version.
+   *  Passed from the server layout so the client doesn't need filesystem access. */
+  validSlugsPerVersion: Record<string, string[]>
+}
+
+export function VersionSwitcher({ validSlugsPerVersion }: VersionSwitcherProps) {
   const pathname = usePathname()
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -45,7 +51,11 @@ export function VersionSwitcher() {
 
   function handleSelect(version: VersionEntry) {
     setOpen(false)
-    router.push(buildUrl(version, slugPath))
+    // Only navigate to the current slug if it exists in the target version.
+    // If not, fall back to the version root (which redirects to getting-started).
+    const validSlugs = validSlugsPerVersion[version.version] ?? []
+    const targetSlug = validSlugs.includes(slugPath) ? slugPath : ''
+    router.push(buildUrl(version, targetSlug))
   }
 
   return (
