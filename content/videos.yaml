@@ -1,0 +1,39 @@
+- title: "Kubernetes Native Distributed Inferencing"
+  description: "Introduction to llm-d at DevConf.US 2025 — learn the fundamentals of distributed LLM inference on Kubernetes from Rob Shaw (Red Hat)."
+  youtubeId: "lvzMLf6wXlY"
+  date: "2025-09-19"
+  speaker: "Rob Shaw (Red Hat)"
+  event: "DevConf.US 2025"
+  tags: ["overview", "conference"]
+
+- title: "Serving PyTorch LLMs at Scale"
+  description: "Disaggregated inference with Kubernetes and llm-d — presented by Maroon Ayoub (IBM) & Cong Liu (Google) at PyTorch Conference."
+  youtubeId: "mfXIe_S53vA"
+  date: "2025-10-22"
+  speaker: "Maroon Ayoub (IBM) & Cong Liu (Google)"
+  event: "PyTorch Conference 2025"
+  tags: ["disaggregation", "conference", "pytorch"]
+
+- title: "Distributed Inference with Well-Lit Paths"
+  description: "Rob Shaw (Red Hat) explores llm-d's well-lit paths and its approach to simplified, production-ready distributed inference."
+  youtubeId: "_xAXb70d4-0"
+  date: "2025-11-01"
+  speaker: "Rob Shaw (Red Hat)"
+  event: "Red Hat"
+  tags: ["overview", "scheduling"]
+
+- title: "Multi-Accelerator LLM Inference on Kubernetes"
+  description: "Deep dive into multi-accelerator LLM inference on Kubernetes — presented by Erwan Gallen (Red Hat) at KubeCon NA 2025."
+  youtubeId: "g8_snJA_ESU"
+  date: "2025-11-12"
+  speaker: "Erwan Gallen (Red Hat)"
+  event: "KubeCon NA 2025"
+  tags: ["hardware", "kubernetes", "conference"]
+
+- title: "Routing Stateful AI Workloads in Kubernetes"
+  description: "Maroon Ayoub (IBM) & Michey Mehta (Red Hat) explore cache-aware routing strategies for LLM workloads using llm-d and the K8s Gateway API Inference Extension."
+  youtubeId: "-C76naL3PRc"
+  date: "2025-11-13"
+  speaker: "Maroon Ayoub (IBM) & Michey Mehta (Red Hat)"
+  event: "KubeCon NA 2025"
+  tags: ["routing", "kubernetes", "conference"]

@@ -1,0 +1,82 @@
+---
+title: "The Inference Gateway"
+description: "How llm-d's inference gateway routes requests, enforces scheduling policies, and protects model servers from overload."
+sidebar_order: 1
+sidebar_group: "Core Concepts"
+---
+
+The inference gateway is the entry point for all inference traffic in a production llm-d deployment. It sits in front of a pool of model server replicas and makes per-request routing decisions based on real-time signals from each replica.
+
+## Why a Dedicated Gateway?
+
+Standard Kubernetes load balancers (Services with round-robin, or an ingress controller) distribute requests without any awareness of model server internals. This causes problems at inference scale:
+
+- A replica with a full KV cache for a given prompt prefix is equally likely to receive the request as one that must recompute from scratch.
+- A replica that is already saturated (decode queue full) will continue receiving new requests until it times out.
+- There is no mechanism to reject or queue requests during traffic spikes.
+
+The llm-d inference gateway solves all three by pulling live metrics from every replica via a sidecar agent and using them to score routing targets.
+
+## Scheduling Policies
+
+The gateway supports pluggable scheduling policies. Each policy scores available replicas for an incoming request and selects the best target.
+
+### Prefix Cache Aware Scheduling
+
+Inspects the request's prompt and compares its token prefix against the KV cache state reported by each replica. Routes to the replica with the highest prefix match — maximizing cache hits and minimizing time-to-first-token (TTFT).
+
+<Callout type="tip">
+  Prefix cache aware scheduling delivers the largest TTFT improvements for workloads with shared system prompts or multi-turn conversations. Enable it when your cache hit rate under random routing is below 40%.
+</Callout>
+
+### Predicted Latency Based Scheduling
+
+Uses a lightweight latency predictor model (trained on historical request traces from your cluster) to estimate the end-to-end latency for routing a given request to each candidate replica. Routes to the replica with the lowest predicted latency.
+
+This policy handles heterogeneous request lengths well and is less sensitive to cache state than prefix-cache routing.
+
+### Round Robin
+
+The default fallback. Distributes requests evenly across all healthy replicas. Useful as a baseline for benchmarking and for workloads without significant prompt prefix sharing.
+
+## Admission and Flow Control
+
+The gateway enforces configurable admission and flow control to protect replicas from overload.
+
+| Parameter | Default | Description |
+|---|---|---|
+| `maxQueueDepth` | 100 | Maximum requests held in the gateway queue before new requests are rejected |
+| `maxConcurrency` | 32 | Maximum requests in flight per replica |
+| `timeoutSeconds` | 300 | Per-request timeout before the gateway returns a 504 |
+| `admissionPolicy` | `queue` | `queue` (buffer) or `reject` (immediate 429) on capacity |
+
+When the queue is full and `admissionPolicy: reject` is set, the gateway returns HTTP 429 with a `Retry-After` header based on the estimated drain time.
+
+## Replica Health and Draining
+
+The gateway continuously monitors replica readiness via Kubernetes readiness probes and the sidecar metrics endpoint. Replicas that fail health checks are removed from the routing pool within one probe cycle (default: 5 seconds).
+
+Graceful draining is supported: when a replica is marked for termination (e.g., during a rolling update), the gateway stops routing new requests to it while allowing in-flight requests to complete. The `drainTimeoutSeconds` parameter controls how long the gateway waits before forcibly terminating the connection.
+
+## Configuration
+
+The gateway is configured via the `InferenceGateway` CRD:
+
+```yaml
+apiVersion: inference.llm-d.ai/v1alpha1
+kind: InferenceGateway
+metadata:
+  name: main-gateway
+  namespace: llm-d
+spec:
+  targetRef:
+    group: inference.llm-d.ai
+    kind: ModelServerPool
+    name: qwen3-14b-pool
+  schedulingPolicy: prefixCacheAware
+  admissionControl:
+    maxQueueDepth: 100
+    maxConcurrency: 32
+    admissionPolicy: queue
+  drainTimeoutSeconds: 60
+```

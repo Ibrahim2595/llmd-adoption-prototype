@@ -1,0 +1,109 @@
+---
+title: "Native KV Cache Offloading to Any Filesystem with llm-d"
+description: "llm-d's new filesystem backend offloads KV cache to shared storage, enabling cross-replica reuse and up to 16.8x faster TTFT — scaling inference throughput without GPU or CPU memory limits."
+date: "2026-02-10"
+authors:
+  - name: "Kfir Toledo"
+    title: "Research Staff Member, IBM"
+    github: "kfirtoledo"
+  - name: "Danny Harnik"
+    title: "Senior Technical Staff Member, IBM"
+    github: "dannyharnik"
+  - name: "Effi Ofer"
+    title: "Research Staff Member, IBM"
+    github: "effiofer"
+  - name: "Or Ozeri"
+    title: "Research Staff Member, IBM"
+    github: "orozeri"
+  - name: "Guy Margalit"
+    title: "Senior Technical Staff Member, IBM Storage CTO Office"
+    github: "guymargalit"
+tags: ["kv-cache", "storage", "inference"]
+readingTime: "8 min read"
+---
+
+llm-d is a distributed inference platform spanning multiple vLLM instances. KV cache hits are critical to achieving high inference throughput. Yet, in a distributed environment, cache hits do not occur across different nodes as the KV cache is local to each vLLM instance. In addition, this local cache is limited in size, further limiting KV data reuse.
+
+This blog presents a new way to offload KV cache to storage, tackling both challenges — KV cache sharing and KV cache scale. llm-d's filesystem (FS) backend is a KV cache storage connector for vLLM that offloads KV blocks to shared storage based on vLLM's native Offloading Connector.
+
+While there are a number of existing solutions for KV cache offload to storage (e.g. LMCache or Dynamo KVBM), the new connector offers simplicity, can run with llm-d and vLLM as the only dependency, and exhibits improved performance over state-of-the-art shared storage connectors.
+
+## The Importance of KV-cache Reuse
+
+In transformer-based inference, the prefill stage computes key and value (KV) tensors for the input tokens, which are then used when decoding output tokens. This stage is computationally intensive, especially for long input contexts. But once the KV tensors are available, they are kept in a KV cache and can be reused, avoiding the prefill computation entirely.
+
+When the same prefix appears repeatedly — for example, shared system prompts, common documents, agentic loops, or multi-turn conversations — recomputing the KV tensors wastes significant compute. Reusing the KV cache allows the system to skip a large portion of the prefill work, reducing latency and improving overall throughput.
+
+## Why Storage Offloading is Needed
+
+vLLM already supports keeping KV-cache data in GPU HBM and, more recently, offloading KV to host memory. These approaches work well for a single server or small deployments, but they become limited at scale.
+
+**KV-cache takes up lots of space**, especially with longer context lengths and higher concurrency from multiple users and requests. Even a medium-sized class model, such as Llama-3.1-70B, requires 305 GB of KV-cache for one million tokens. Storage scales nearly infinitely compared to memory solutions and offers a far superior $ per GB ratio.
+
+In addition, shared storage is a simple method to share KV data across an entire cluster spanning multiple vLLM instances and physical nodes. New nodes added to a cluster can immediately benefit from existing KV-cache data without warming the cache from scratch.
+
+## What We Built: llm-d FS Backend
+
+The llm-d FS backend is a storage backend that plugs into vLLM's Offloading Connector. It stores KV blocks as files on a shared filesystem and loads them back on demand. It uses the filesystem directory as the index of what KV values are in the storage, making it persistent and sharable across all nodes connected to the filesystem.
+
+Key properties:
+
+* **Filesystem agnostic**: Relies on standard POSIX file operations, working with any standard filesystem.
+* **KV sharing across instances and nodes:** Multiple vLLM servers can reuse cached prefixes by accessing the same shared path.
+* **Persistence across restarts or failures:** KV data can survive pod restarts, rescheduling, and node failures.
+* **Enterprise storage integration:** Can leverage mature storage systems with existing durability, monitoring, and access control.
+
+Performance-related design choices:
+
+* **Fully asynchronous I/O:** KV reads and writes run without blocking the main path.
+* **High throughput via parallelism:** I/O operations are parallelized across worker threads to increase bandwidth and reduce tail latency.
+* **Minimal interference with GPU computations**: Default transfers use GPU DMA, reducing interference with compute kernels.
+
+### How to Use it
+
+Using the FS offloading connector is simple, requires a `pip install`, and a directory path to the storage being used. Detailed instructions can be found in the llm-d well-lit path [guide](https://github.com/llm-d/llm-d/tree/main/guides/tiered-prefix-cache/storage/README.md).
+
+The connector was tested with IBM Storage Scale, local storage (NVMe drive with a filesystem mounted on it), and CephFS. It will work seamlessly with any storage supporting a filesystem API.
+
+## Results and Benchmarks
+
+### Single request speed-up
+
+<div style={{textAlign: 'center', margin: '20px 0'}}>
+  <img src="/img/blogs/fs-connector/StorageBlogimage1.webp" alt="Single Request Latency" style={{width: '75%', height: 'auto'}} />
+  <p style={{fontSize: '0.9em', marginTop: '8px'}}><em>Figure 1: Single-request KV-cache load across tiers</em></p>
+</div>
+
+We measure the TTFT for a single request as the number of tokens increases using various offloading mediums — for a Llama-3.1-70B model on a system with 4x NVIDIA H100 GPUs and an IBM Storage Scale.
+
+As the number of tokens increases, KV loading becomes increasingly efficient compared to recomputing the same tokens during prefill, achieving a speedup of up to **16.8X** on long prompts. However, for single-request workloads, GPU and CPU caching remain the faster options.
+
+Storage is not intended to replace these mechanisms, but to complement them. Its main value lies in providing far greater scalability, significantly lower cost per gigabyte, and persistent KV storage.
+
+### Scalability test
+
+<div style={{textAlign: 'center', margin: '20px 0'}}>
+  <img src="/img/blogs/fs-connector/StorageBlogimage2.webp" alt="Full Hit Workload" style={{width: '75%', height: 'auto'}} />
+  <p style={{fontSize: '0.9em', marginTop: '8px'}}><em>Figure 2: Multiple-request KV-cache load across tiers</em></p>
+</div>
+
+We evaluate KV-cache loading under varying concurrency levels by issuing 16K token requests from a growing number of users on a single node running Llama-3.1-70B on 4x NVIDIA H100 GPUs.
+
+With GPU-only storage, only a small number of user prompts can fit in GPU memory. With CPU offloading, the drop-off is postponed. On the other hand, **storage-backed KV caching shines once we scale up** — it allows the system to sustain throughput as the working set increases nearly infinitely.
+
+### Scalability in realistic workloads
+
+<div style={{textAlign: 'center', margin: '20px 0'}}>
+  <img src="/img/blogs/fs-connector/StorageBlogimage3.webp" alt="Real Life Workload" style={{width: '75%', height: 'auto'}} />
+  <p style={{fontSize: '0.9em', marginTop: '8px'}}><em>Figure 3: Multiple requests with mixed workload (load + prefill + decode)</em></p>
+</div>
+
+In a more realistic workload mixing KV loading, prefill, and decode operations at 40 QPS from a pool of variable-size users, we show similar behavior to the previous test. By extending KV-cache capacity using shared storage, llm-d can reuse KV data more effectively across requests and replicas, maintaining improved overall throughput and TTFT as the system scales.
+
+## Summary and Next Steps
+
+Storage offloading is an important and essential capability for scalable AI inference platforms such as llm-d. It increases effective KV-cache capacity, enables cross-replica reuse, and makes llm-d clusters more elastic by allowing them to scale efficiently with growing request volume and user concurrency.
+
+As next steps, we are working on new features, including tiered storage offload (as a second tier to CPU DRAM), integration with NIXL backends, offloading to object storage, support for GPU Direct Storage (GDS), and more.
+
+*Acknowledgement: For performance testing, we used IBM Storage Scale, an enterprise-level storage system offering high performance, scalability, and reliability.*

@@ -1,0 +1,103 @@
+---
+title: "llm-d 0.5: Sustaining Performance at Scale"
+description: "llm-d v0.5 introduces hierarchical KV-cache offloading, LoRA-aware scheduling, UCCL networking, and scale-to-zero autoscaling for sustained inference performance at scale."
+date: "2026-02-04"
+authors:
+  - name: "Robert Shaw"
+    title: "Director of Engineering, Red Hat"
+  - name: "Clayton Coleman"
+    title: "Distinguished Engineer, Google"
+    github: "smarterclayton"
+  - name: "Carlos Costa"
+    title: "Distinguished Engineer, IBM"
+tags: ["releases", "announcement", "llm-d"]
+readingTime: "10 min read"
+---
+
+In our previous release ([v0.4](/blog/llm-d-v0.4-achieve-sota-inference-across-accelerators)), we focused on improving the end-to-end latency of production inference, introducing speculative decoding and extending prefill/decode disaggregation across a broader set of accelerator architectures. That work established llm-d's ability to deliver state-of-the-art latency along the critical serving path.
+
+With v0.5, llm-d expands its focus from peak performance to the operational rigor required to sustain performance at scale. This release prioritizes reproducibility, resilience, and cost efficiency, with concrete improvements across the following areas:
+
+1. **Developer Experience and reproducibility:** We have simplified the benchmarking workflow with dedicated, in-guide benchmark support, allowing users to validate each "well-lit path" with a single command.
+2. **Hierarchical KV Offloading:** A new storage architecture decouples cache capacity from GPU memory through native CPU and filesystem tiers.
+3. **Advanced Scheduling:** Cache-aware routing now supports LoRA adapters and active-active high availability.
+4. **Resilient Networking:** A new transport backend (UCCL) improves stability in congested networks.
+5. **Autoscaling Updates:** We have introduced scale-to-zero capabilities for cost-efficient intermittent workloads.
+
+## Updated developer experience
+
+In v0.5, we address the variance between reported benchmark numbers and realized production performance by adopting the "Research Paper Principle": the requirement that every performance claim be accompanied by a reproducible, version-controlled configuration.
+
+* **Simplified benchmarking (one guide, one benchmark):** v0.5 introduces in-guide benchmark support. Each "well-lit path" (e.g., Inference-Scheduling, Wide EP, Disaggregated) now has a defined benchmark configuration that reproduces the benchmark results shown in the guides.
+* **Use cases and personalities:** The new harness supports distinct "personalities" or use cases. For "config tuners" aiming to carry out parameter exploration sweeps, there is support for experiments crafted with the purpose of finding optimal configurations. An llm-d service owner can track performance regressions on their production stack by selecting a mix of workloads to be periodically run.
+* **Parameter sweep exploration:** The new [Configuration Explorer](https://github.com/llm-d/llm-d-benchmark/tree/main/config_explorer) allows analysts, researchers, or customers to perform their own parameter sweep exploration, simulating activation memory usage against specific hardware constraints.
+
+## Performance update
+
+### Throughput-oriented: Wide-EP on Nvidia B200
+
+For batch-intensive workloads, throughput is the primary metric. We validated a Wide-EP topology on a cluster of Nvidia B200 GPUs:
+
+* **Topology:** 16x Prefill GPUs / 16x Decode GPUs (EP=16, DP=16, TP=1)
+* **Workload:** Random dataset, 1k/1k input/output length
+* **Result:** ~50k output tokens/sec total throughput (~3.1k output tokens/sec per decode GPU)
+
+### Latency-oriented: Inference Scheduling
+
+For workloads with shared context and compute reuse opportunities:
+
+* **Topology:** 8x vLLM pods / 16x NVIDIA H100 GPUs (TP=2)
+* **Workload:** Shared prefix synthetic, 150 groups × 5 prompts, 6k/1.2k/1k system/question/output length
+* **Result:** 4.5-11k output tokens/sec throughput, P50 TTFT 136–157ms, up to 109% higher throughput and 99% lower TTFT vs baseline Kubernetes service
+
+## Optimized offloading: Hierarchical KV-caching
+
+In v0.5, we introduce the `llm-d FS backend`, a storage connector that plugs into vLLM's native offloading interface. This architecture effectively establishes a three-tier memory hierarchy (GPU, CPU, and Disk):
+
+* **Decoupling capacity from compute:** By offloading KV blocks to a shared file system, the system decouples cache capacity from local node memory.
+* **Cross-replica reuse:** Unlike local CPU caches, a shared file system acts as a persistent, global store of KV states. New nodes added to the cluster can "hydrate" their cache immediately from the shared tier.
+* **Asynchronous design:** The backend utilizes fully asynchronous I/O and parallel worker threads, ensuring that the latency cost of fetching blocks from disk does not block the main compute path.
+
+Internal benchmarks show that standard GPU-only deployments experience a sharp performance collapse once HBM is saturated. In contrast, the storage-backed configuration creates a "performance floor," sustaining throughput as user concurrency increases well beyond local memory limits. Results demonstrate **13.9x improvement** at 250 users on Llama-3.1-70B with IBM Storage Scale.
+
+## Advancements in scheduling
+
+In v0.5, the scheduler has evolved to handle more complex routing scenarios:
+
+* **Unified tokenization pipeline:** We have standardized the preprocessing stack by reusing the native vLLM Python module for all tokenization and rendering paths.
+* **Active-active HA with dynamic discovery:** A new subscription manager for KV-Events moves away from static connections. The scheduler now dynamically discovers vLLM pods and manages ZeroMQ (ZMQ) subscriptions based on the pod lifecycle, enabling robust Active-Active multi-replica scheduler High-Availability.
+* **LoRA-precise prefix caching:** The precise scheduling path now fully supports LoRA adapters. This allows the scheduler to route requests based on the specific cache locality of LoRA adapters, preventing the "thundering herd" problem where every replica attempts to load every adapter.
+
+## Resilient networking: NIXL — UCCL backend
+
+In v0.5, we have integrated our contribution of the UCCL (Unified Collective Communication Library) backend into the NIXL networking layer. UCCL provides a unified abstraction over vendor-specific collective primitives (NCCL, RCCL, MCCL), implementing a host-resident software transport stack for fine-grained flow splitting and adaptive congestion control.
+
+Benchmarks on Llama-3.1-8B on an OpenShift cluster with 200 Gb/s interconnects, measuring transfer latency of a 4 GB KV-cache payload:
+
+* **UCX backend:** Latency degraded from 362ms to 424ms (+17.1%) under congestion.
+* **UCCL backend:** Latency degraded from 359ms to 384ms (+7.1%) under congestion.
+
+The UCCL backend demonstrated **2.4x greater resilience** to network contention.
+
+## Updates to autoscaling
+
+* **Scale-to-zero and from-zero:** We have implemented support for scaling inference pools down to zero replicas during idle periods. A specialized activator component handles the "cold start" sequence, ensuring that incoming requests trigger provisioning without being dropped.
+* **Saturation-based scaling:** The control loop has been refined to better detect saturation points based on queue depth and KV-cache pressure.
+
+## Community and ecosystem
+
+Contribution highlights from this release:
+
+* **vLLM KV-Connector:** We worked closely with the vLLM maintainers to define and implement the [KV Offloading Connector](https://blog.vllm.ai/2026/01/08/kv-offloading-connector.html), ensuring that the storage hierarchy we built for llm-d rests on standard, upstream interfaces.
+* **NIXL Integration:** Our UCCL backend has been [merged into the NIXL 0.9 release](https://github.com/ai-dynamo/nixl/pull/895), enabling the wider community to benefit from the host-driven congestion control strategies we developed for disaggregated serving.
+
+## What Is Next?
+
+The v0.5 release establishes a foundation for reproducible research and production stability. Looking ahead, our focus shifts to four key areas:
+
+* **Scheduling:** Moving toward predictive, latency-aware routing (using TTFT/TPOT targets rather than queue depth) and native batch inference support.
+* **Offloading:** Developing proactive state management APIs to "pin" critical context blocks and exploring semantic caching policies.
+* **Autoscaling:** Introducing pluggable optimizers that leverage queuing theory and ML for predictive scaling, alongside direct SLO integration.
+* **Observability:** Implementing end-to-end distributed tracing, from the gateway through the scheduler to the engine.
+
+Contribute on [GitHub](https://github.com/llm-d), [join our community calls](https://red.ht/llm-d-public-calendar) (Wed 12:30pm ET), join the SIGs and come build with us!

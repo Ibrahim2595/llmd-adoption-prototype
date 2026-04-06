@@ -1,0 +1,86 @@
+---
+title: "llm-d 0.4: Achieve SOTA Performance Across Accelerators"
+description: "llm-d v0.4 delivers 50% lower latency for MoE models via speculative decoding, expands TPU and XPU support, and adds prefix cache offloading for faster TTFT."
+date: "2025-12-02"
+authors:
+  - name: "Robert Shaw"
+    title: "Director of Engineering, Red Hat"
+  - name: "Clayton Coleman"
+    title: "Distinguished Engineer, Google"
+    github: "smarterclayton"
+  - name: "Carlos Costa"
+    title: "Distinguished Engineer, IBM"
+tags: ["releases", "announcement", "llm-d"]
+readingTime: "7 min read"
+---
+
+llm-d's mission is to provide the fastest time to SOTA inference performance across any accelerator and cloud. In our [0.3 release](/blog/llm-d-v0.3-expanded-hardware-faster-perf-and-igw-ga) we enabled wide expert parallelism for large mixture-of-expert models and added preliminary support for multiple non-GPU accelerator families.
+
+This release brings the complement to expert parallelism throughput: **improving end-to-end request latency of production serving**. We reduce DeepSeek per token latency up to 50% with speculative decoding and vLLM optimizations for latency critical workloads. We add dynamic disaggregated serving support to Google TPU and Intel XPU to further reduce time to first token latency when traffic is unpredictable, while our new well-lit path for prefix cache offloading helps you leverage CPU memory and high performance remote storage to increase hit rates and reduce tail latency.
+
+## SOTA Low Latency Serving on Large MoE
+
+While our previous releases focused on throughput, v0.4 delivers the features necessary to guarantee ultra-low latency, particularly for demanding wide EP MoE models.
+
+We integrated critical low-latency optimizations for MoE models in vLLM and observed an over 40% reduction of per token latency for DeepSeek V3.1 on H200 GPUs:
+
+* **Speculative decoding** leverages under utilized compute at low concurrency to run a smaller "draft" model and guesses at the next valid token — correct guesses are cheaper to validate and thus reduce per output token latency. We also tested and improved a number of MoE specific optimizations, including DeepSeek's native MTP support. We launched the [speculators OSS project](https://github.com/vllm-project/speculators) to broaden support for speculative decoding among popular models.
+* **Async Scheduling:** Integration of asynchronous scheduling in vLLM allows for more efficient overlapping of compute and CPU scheduling operations.
+* **Block-FP8 kernel optimizations** to fuse key elementwise operations, overlap shared expert computation with grouped expert routing, and select more efficient kernels.
+
+## Expanding Hardware Choice
+
+The community has continued to integrate support across a diverse range of accelerators:
+
+* **Google TPU Disaggregation over DCN:** We integrate the latest vLLM + TPU architecture with our dynamic disaggregation recipe for llama3-70b, allowing high performance KV cache transfer over datacenter TCP.
+* **Intel XPU Integration:** Initial support and verification for the intelligent scheduling and disaggregation well-lit paths.
+* **AWS EFA Support:** Support for AWS Elastic Fabric Adapters (EFA) has been added to the llm-d CUDA image.
+
+## Expanding the well-lit paths
+
+### New well-lit path for prefix cache offloading
+
+For long-context or high-concurrency multi-turn workloads, GPU memory is the bottleneck. To address this, we are recommending [**tiered prefix-cache offloading**](https://github.com/llm-d/llm-d/blob/main/guides/tiered-prefix-cache/README.md) as a standard practice in llm-d v0.4.
+
+We have formalized vLLM-native CPU offloading and LMCache connectors under a new well-lit path that allows the system to transparently utilize host CPU RAM as a secondary storage tier for the KV cache.
+
+In our user guide benchmarking, enabling CPU offloading when KV cache working set exceeded the available HBM capacity yielded a **25% reduction in mean Time To First Token (TTFT)** and a **21% increase in total throughput**.
+
+| HBM < KVCache < HBM + CPU RAM | Mean TTFT (second) | P90 TTFT (second) | Mean E2E Latency (second) | Overall Throughput (token per second) |
+| :--- | :--- | :--- | :--- | :--- |
+| **Baseline vLLM** | 9.0 | 20.9 | 37.8 | 38534.8 |
+| **vLLM + CPU offloading 100GB** | 6.7 (-25.6%) | 20.2 (-3.3%) | 30.9 (-18.3%) | 46751.0 (+21.3%) |
+| **vLLM + LMCache CPU offloading 100GB** | 6.5 (-27.8%) | 18.8 (-10.0%) | 30.8 (-18.5%) | 46910.6 (+21.7%) |
+
+### Enhanced intelligent scheduling
+
+To complement the new offloading capabilities, we updated our **intelligent inference scheduling** well-lit path to fully leverage the tiered memory architecture.
+
+* **Tier-aware precision:** Prefix-cache affinity now accounts for the cost dynamics of the new cache tier, with configurable weighted scoring (e.g., weighting GPU hits higher than CPU hits).
+* **Saturation stability:** We introduced the `no-hit-lru-scorer`. This scorer intelligently distributes "cold" requests to prevent hotspots during cache formation, eliminating oscillating wait-queues.
+
+For workloads with **prefix-reuse opportunities**, this improved placement logic **cut P99 Time To First Token (TTFT) in half** (18.3s → 8s) while maintaining stability at peak concurrency.
+
+### Benchmarking and validation
+
+[llm-d-benchmark](https://github.com/llm-d/llm-d-benchmark) provides all the tooling needed for performance characterization using a "design of experiments" methodology:
+
+* **Comprehensive automation:** Fully automated setup and execution of llm-d well-lit paths in multiple scenarios.
+* **Flexible execution:** New guides covering automated stack setup, running against existing stacks, and interactive benchmarking.
+* **Data-driven insights:** Benchmark data collected in a standardized report format.
+
+## Improving efficiency
+
+### Introducing the Workload Variant Autoscaler (experimental)
+
+The [Workload Variant Autoscaler](https://github.com/llm-d/llm-d/blob/main/guides/workload-autoscaling/README.md) uses a reactive saturation-based optimizer that operates on per-replica metrics such as queue length and KV-cache utilization to identify saturated replicas and calculate spare capacity on non-saturated replicas.
+
+## Breaking changes
+
+As part of our refactoring to align with best practices in the Kubernetes Gateway API Inference Extension, the method for setting configuration flags for the Inference Scheduler has changed from an array format to a map format. If you are upgrading to v0.4, please review the latest Helm chart `values.yaml` files and update your overrides immediately.
+
+## What Is Next?
+
+0.5 will continue adding accelerator support on a wider range of scenarios and models and also increase our focus on tuning for specific use cases, like multi-turn chat or reinforcement learning.
+
+Contribute on [GitHub](https://github.com/llm-d), [join our community calls](https://red.ht/llm-d-public-calendar) (Wed 12:30pm ET), join the SIGs and come build with us!

@@ -1,0 +1,52 @@
+---
+title: "Architecture Overview"
+description: "Understand how llm-d's components fit together to deliver high-performance distributed LLM inference on Kubernetes."
+sidebar_order: 1
+---
+
+llm-d is a Kubernetes-native framework for serving large language models at scale. It decomposes the inference stack into composable, independently scalable components — letting you optimize prefill, decode, routing, and caching separately.
+
+## Core Components
+
+The system is organized around four main layers:
+
+**Inference Gateway** routes incoming requests across model server replicas using pluggable scheduling policies — prefix-cache-aware routing, predicted-latency-based scheduling, or simple round-robin. It also handles admission control and flow control to prevent overload.
+
+**Model Servers** are standard vLLM instances (or other OpenAI-compatible engines) deployed as Kubernetes pods. llm-d adds sidecar components for real-time metrics export and KV cache coordination.
+
+**Disaggregated Serving** splits the prefill and decode phases across separate pods. Prefill workers process the prompt and produce KV cache; decode workers stream token generation. This separation improves hardware utilization and reduces time-to-first-token at scale.
+
+**KV Cache Offloading** extends the KV cache to a tiered storage hierarchy — GPU VRAM → CPU RAM → NVMe SSD → remote object storage. Frequently reused prefixes are kept warm, reducing redundant computation.
+
+<Callout type="info">
+  llm-d is under active development. APIs and configuration schemas may change between minor releases. Pin your deployment to a specific version tag for stability.
+</Callout>
+
+## Start Here
+
+<NavCards columns={2}>
+  <NavCard
+    title="Prerequisites"
+    description="What you need before installing llm-d: cluster requirements, tooling, and access."
+    href="/docs/getting-started/prerequisites"
+    icon="check"
+  />
+  <NavCard
+    title="Gateway-Free Quickstart"
+    description="Deploy llm-d without an inference gateway — the fastest path to a working cluster."
+    href="/docs/getting-started/quickstart/gateway-free"
+    icon="zap"
+  />
+  <NavCard
+    title="Gateway-Backed Quickstart"
+    description="Deploy with the inference gateway for production-grade routing and scheduling."
+    href="/docs/getting-started/quickstart/gateway-backed"
+    icon="gateway"
+  />
+  <NavCard
+    title="Core Concepts"
+    description="Deep dives into the inference gateway, disaggregated serving, and KV cache offloading."
+    href="/docs/core-concepts/inference-gateway"
+    icon="book"
+  />
+</NavCards>

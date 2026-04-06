@@ -1,0 +1,172 @@
+---
+title: "Predicted-Latency Based Scheduling for LLMs"
+description: "A lightweight ML model trained online from live traffic replaces manually tuned heuristic weights with direct latency predictions, achieving 43% improvement in P50 end-to-end latency and 70% improvement in TTFT on a production-realistic workload."
+date: "2026-03-13"
+authors:
+  - name: "Kaushik Mitra"
+    title: "Software Engineer, Google"
+    github: "kaushikmitr"
+  - name: "Benjamin Braun"
+    title: "Software Engineer, Google"
+    github: "bbraun"
+  - name: "Abdullah Gharaibeh"
+    title: "Senior Staff Software Engineer, Google"
+    github: "ahg-g"
+  - name: "Clayton Coleman"
+    title: "Distinguished Engineer, Google"
+    github: "smarterclayton"
+tags: ["scheduling", "inference"]
+readingTime: "18 min read"
+---
+
+Not all LLM requests cost the same. A short prompt might complete in milliseconds, while a long one can occupy a GPU for seconds. If we can predict how long a request will take on each candidate server before dispatching it, we can make substantially better routing decisions. This post describes a system that does exactly that: a lightweight ML model trained online from live traffic that replaces manually tuned heuristic weights with direct latency predictions.
+
+## The Load Balancing Problem in LLM Serving
+
+The variation in request cost comes from how LLM inference works. It happens in two phases: first, the model processes the entire input prompt (the **prefill** phase), which is compute-heavy and scales with prompt length. Then it generates output tokens one at a time (the **decode** phase), which is memory-heavy and scales with the number of tokens generated.
+
+Current load balancers try to account for this using signals like queue depth, memory pressure, cache locality, and batch size. But these signals often conflict: routing for cache reuse concentrates load, while routing for low utilization spreads it. Getting the balance right requires manual tuning of weights, and the right balance shifts as the workload varies.
+
+Production traffic makes this concrete. Internal metrics from a Google service serving an open model over 24 hours show:
+
+- **Request and response sizes are bursty and have huge variance**: Input and output token counts swing by orders of magnitude over the course of hours.
+- **Server load is uneven**: KV cache utilization spikes from 30% to over 70%. Queue depths spike just as unevenly.
+- **Cache reuse is unstable**: Hit rates collapse frequently as traffic patterns shift and cached prefixes get evicted.
+
+No fixed configuration can handle this. Weights tuned for high cache reuse cause latency violations during cache misses, and weights tuned for worst-case reuse waste capacity when caching is working well.
+
+## Predicted-Latency Aware Scheduling
+
+The two phases of LLM inference each have a standard latency metric: **Time to First Token (TTFT)** measures how long prefill takes, and **Time Per Output Token (TPOT)** measures how long each subsequent token takes to generate.
+
+We train a lightweight XGBoost regression model in real-time on the relationship between request and server characteristics — prompt length, prefix cache hit rate, number of running requests, queue depth, KV cache utilization — and the observed TTFT and TPOT for completed requests. The model continuously retrains on a sliding window of recent data to track shifting workload patterns.
+
+At scheduling time, the model predicts the TTFT and TPOT a new request would experience on each candidate server, given that server's current state. The scheduler then routes the request to the server with the best predicted outcome.
+
+This largely eliminates manual weight tuning. Rather than deciding how much to value cache locality versus queue depth versus memory pressure, the model learns those tradeoffs directly from observed latency data.
+
+**Across five benchmark scenarios ranging from cache-friendly to cache-intensive workloads, predicted-latency aware scheduling outperforms or matches load+prefix-aware routing in four out of five cases. Additionally we achieve 43% improvement in P50 end-to-end latency on a representative MaaS workload, with 70% improvements in TTFT.**
+
+## How It Works
+
+### Design Goals
+
+The predicted-latency approach improves on utilization-based balancing in two key ways:
+
+- **Balancing spread vs consolidation under changing traffic:** The predicted-latency model learns the relationship between server state, request characteristics, and actual latency outcomes, allowing it to dynamically balance between spreading and consolidation as conditions change.
+- **Best-fit scheduling in the presence of SLOs:** The predicted-latency model directly estimates TTFT and TPOT per server, allowing the scheduler to compute headroom against SLO targets and route accordingly.
+
+### Predicting TTFT and TPOT
+
+We use an XGBoost regression model that takes request and server state as input and outputs predicted TTFT and TPOT.
+
+| Feature | What It Captures | Why It Matters |
+| :---- | :---- | :---- |
+| **KV Cache Usage %** | How full the decode state is | High KV cache → higher TPOT and slower TTFT when memory is saturated |
+| **Input Length** | Weight of the prefill step | Longer prompts → higher prefill cost → higher TTFT |
+| **Queue Depth** | Backlog before scheduling | More waiting requests → higher TTFT |
+| **Running Requests** | Active GPU concurrency | Higher concurrency → higher TTFT; larger decode batches → higher TPOT |
+| **Prefix Cache Match %** | How much KV reuse is possible | High match → faster prefill → lower TTFT |
+| **Input Tokens In Flight** | Input tokens dispatched but not yet prefilled | Captures both incoming prefill pressure and lingering memory footprint |
+
+### Training Data
+
+The model collects the most recent samples using a **sliding window**, stratified into coarse **buckets** (KV cache % in steps of 10, prefix hit rate in steps of 0.25, etc.). Bucketing with a sliding window maintains samples from regimes that aren't showing up in the latest traffic — without it, a single global sliding window would let the newest data overwrite everything.
+
+### Request Scheduling
+
+The latency predictor runs as a sidecar to the Inference Gateway Endpoint Picker (EPP), hosting both training and prediction servers. We added a predicted-latency scorer to the EPP that compares predicted latencies to per-request SLOs and computes **headroom** (predicted latency minus SLO target), giving higher scores to servers with positive headroom.
+
+### Endpoint Selection
+
+**Latency-based scoring.** When SLOs are provided, the scorer computes headroom for each candidate server and uses a weighted combination — by default 80% TTFT and 20% TPOT — then does **best-fit**: routes to the server with the least positive headroom, packing requests into servers that can still meet SLOs while keeping other servers free.
+
+**Cache-aware affinity gate.** An epsilon-greedy affinity gate balances cache exploitation with exploration:
+
+- **Exploit (99%):** Filter candidates to pods whose prefix cache score exceeds 0.80. Among these, select the pod with the best predicted latency.
+- **Explore (1%):** Ignore the affinity gate entirely and consider all pods, seeding cache entries on non-sticky pods to maintain cache diversity.
+- **Load gate:** If the best sticky pod's predicted TTFT exceeds the best overall pod's TTFT by more than 5000ms, affinity is broken.
+
+## Benchmark Scenario Comparison
+
+We tested five scenarios ranging from cache-friendly (high prefix-sharing) to cache-intensive. Hardware: 10 model servers, each with 2x H100 80GB GPUs (TP=2).
+
+| Scenario | Description | Best Performing Scorer |
+| :---- | :---- | :---- |
+| **A. High System Prompt Overlap, No System Cache Pressure** | Few groups, many users per group (6×1000). Large system prompt relative to user prompt. | **Predicted Latency Scorer** |
+| **B. Moderate System Prompt Overlap, No System Cache Pressure** | Also few groups, many users, but user context grows faster than A. | **Predicted Latency Scorer** |
+| **C. Low System Prompt Overlap, High System Cache Pressure** | Many groups, few users (150×5). Large system prompts fail to amortize due to low reuse. | **Comparable** |
+| **D. Low System Prompt Overlap, Low System Cache Pressure** | Like C, but smaller system prompts relative to user prompts. | **Predicted Latency Scorer** |
+| **ShareGPT** | Chatbot-style workload with minimal prefix overlap. | **Predicted Latency Scorer** |
+
+**Overall, predicted-latency aware routing consistently performs as well as or better than standard Kubernetes routing and load+prefix-aware routing in all tested scenarios, while eliminating the need for manual parameter tuning.**
+
+## Production Workload
+
+We evaluated against a workload derived from real production traffic at an internal Google service. The benchmarking profile was constructed from 7 days of traffic serving a large open model via vLLM.
+
+### Benchmark Configuration
+
+- **Model:** Qwen3-480B on vLLM
+- **Hardware:** 13 servers, each with 8x NVIDIA H200 GPUs
+- **Traffic shape:** 8-stage load ladder alternating between 1.0 and 5.0 RPS
+- **Cache hit rate:** ~94% (matching production peak)
+
+### Results
+
+| Strategy | Success Rate | E2E p50 | TTFT p50 | TPOT p50 |
+| :---- | :---- | :---- | :---- | :---- |
+| No Gateway | ~99.8% | 15.98s | 4.47s | 35ms |
+| Load + Prefix (111) | ~99.9% | 16.42s | 2.86s | 39ms |
+| Load + Prefix (322) | 100% | 13.42s | 3.38s | 28ms |
+| **Latency Prediction** | **~99.9%** | **9.06s** | **0.97s** | **22ms** |
+
+Latency prediction delivers the lowest latency across all metrics:
+
+- **E2E latency:** 9.06s p50 (43% lower than the best heuristic-based approach)
+- **TTFT:** 0.97s p50 (70% lower than the best heuristic)
+- **TPOT:** 22ms p50, the lowest across all strategies
+
+These results are particularly notable because the Load+Prefix (3,2,2) weights were specifically tuned for this workload based on analysis of the production traffic profile. Latency prediction outperforms it — and all other heuristic-based approaches — without any workload-specific tuning.
+
+## Prediction Server Scalability
+
+At high replica counts, the EPP issues one prediction call per candidate pod per incoming request. A Go sidecar coalesces concurrent EPP prediction requests within a 1ms window into a single batched HTTP call, and load-balances across multiple prediction server instances.
+
+| QPS | Avg (ms) | p99 (ms) | Prediction Servers |
+| :---: | :---: | :---: | :---: |
+| 1,000 | 15.0 | 26 | 1 |
+| 5,000 | ~27 | ~74 | 2 |
+| 10,000 | ~48 | ~137 | 4 |
+
+## Try It: A Well-Lit Path
+
+Install the Inference Gateway extension with the latency prediction sidecars:
+https://gateway-api-inference-extension.sigs.k8s.io/guides/latency-based-predictor/
+
+**Send an SLO-aware request:**
+
+```shell
+curl -v $GW_IP/v1/completions \
+  -H 'Content-Type: application/json' \
+  -H 'x-prediction-based-scheduling: true' \
+  -H 'x-slo-ttft-ms: 200' \
+  -H 'x-slo-tpot-ms: 50' \
+  -d '{
+    "model": "Qwen/Qwen3-32B",
+    "prompt": "what is the difference between Franz and Apache Kafka?",
+    "max_tokens": 200,
+    "temperature": 0,
+    "stream": "true"
+  }'
+```
+
+## Takeaway
+
+Accelerator performance is fairly predictable when we account for both the current model server GPU state and request characteristics. By applying online machine learning with a narrow horizon, we can train a model that avoids overfitting while staying accurate to changing workloads. With a good predictor in place, we can route requests based on expected latency, leading to smarter and more efficient load balancing.
+
+## Get Involved
+
+- **Docs & guides**: https://gateway-api-inference-extension.sigs.k8s.io/guides/latency-based-predictor/
+- **Explore the code**: [GitHub organization](https://github.com/llm-d)
+- **Join our Slack**: [/community](/community)
