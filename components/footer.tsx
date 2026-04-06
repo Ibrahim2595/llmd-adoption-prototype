@@ -21,11 +21,11 @@ const COLUMNS = [
     heading: 'Social',
     links: [
       { label: 'GitHub',    href: 'https://github.com/llm-d/llm-d',    external: true },
-      { label: 'LinkedIn',  href: 'https://linkedin.com/company/llm-d', external: true },
-      { label: 'X',         href: 'https://x.com/llm_d',          external: true },
-      { label: 'Reddit',    href: 'https://reddit.com/r/llmd',     external: true },
-      { label: 'Bluesky',   href: 'https://bsky.app/profile/llm-d.ai', external: true },
-      { label: 'YouTube',   href: 'https://youtube.com/@llm-d',    external: true },
+      { label: 'LinkedIn',  href: 'https://www.linkedin.com/company/llm-d/', external: true },
+      { label: 'X',         href: 'https://x.com/_llm_d_',               external: true },
+      { label: 'Reddit',    href: 'https://www.reddit.com/r/llm_d/',      external: true },
+      { label: 'Bluesky',   href: 'https://bsky.app/profile/llm-d.ai',   external: true },
+      { label: 'YouTube',   href: 'https://www.youtube.com/@llm-d-project', external: true },
     ],
   },
 ]

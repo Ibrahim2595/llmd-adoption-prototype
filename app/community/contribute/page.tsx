@@ -88,7 +88,7 @@ export default function ContributePage() {
       <UL>
         <li>
           <strong>Developer Slack:</strong>{' '}
-          <A href="https://llm-d.slack.com">Join our developer Slack workspace</A> to connect with
+          <A href="https://llm-d.ai/slack">Join our developer Slack workspace</A> to connect with
           core maintainers and other contributors, ask questions, and participate in discussions.
         </li>
         <li>

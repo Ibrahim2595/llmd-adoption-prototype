@@ -322,7 +322,7 @@ export default function SIGsPage() {
 
       <H3 id="sig-communication">SIG Communication Channels</H3>
       <UL>
-        <li><strong>Slack</strong>: Each SIG has dedicated channels in the <A href="https://llm-d.slack.com">llm-d Slack workspace</A>.</li>
+        <li><strong>Slack</strong>: Each SIG has dedicated channels in the <A href="https://llm-d.ai/slack">llm-d Slack workspace</A>.</li>
         <li><strong>Google Groups</strong>: Join <A href="https://groups.google.com/g/llm-d-contributors">llm-d-contributors</A> for comment access to SIG documents.</li>
         <li><strong>GitHub</strong>: Issues and discussions are labeled by SIG area.</li>
         <li><strong>Calendar</strong>: All SIG meetings are on the shared project calendar.</li>

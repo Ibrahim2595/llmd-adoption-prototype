@@ -37,7 +37,7 @@ export default function CommunityPage() {
           <p className="text-gray-700 dark:text-gray-300 leading-7">
             Get your invite and visit the{' '}
             <a
-              href="https://llm-d.slack.com"
+              href="https://llm-d.ai/slack"
               target="_blank"
               rel="noopener noreferrer"
               className="text-gray-700 dark:text-gray-300 underline underline-offset-2 hover:text-purple transition-colors"
@@ -125,7 +125,7 @@ export default function CommunityPage() {
         <NavCard
           title="Slack Workspace"
           description="Daily conversations, Q&A, and real-time collaboration"
-          href="https://llm-d.slack.com"
+          href="https://llm-d.ai/slack"
           icon="terminal"
         />
       </NavCards>
@@ -138,7 +138,7 @@ export default function CommunityPage() {
         {[
           {
             name: 'Slack',
-            href: 'https://llm-d.slack.com',
+            href: 'https://llm-d.ai/slack',
             label: 'llm-d Workspace',
             description: 'Daily conversations, Q&A, and real-time collaboration',
           },
@@ -187,7 +187,7 @@ export default function CommunityPage() {
       </p>
       <div className="flex flex-wrap gap-6">
         {[
-          { name: 'LinkedIn', href: 'https://linkedin.com/company/llm-d' },
+          { name: 'LinkedIn', href: 'https://www.linkedin.com/company/llm-d/' },
           { name: 'Bluesky', href: 'https://bsky.app/profile/llm-d.ai' },
           { name: 'X (Twitter)', href: 'https://x.com/_llm_d_' },
           { name: 'Reddit', href: 'https://www.reddit.com/r/llm_d/' },

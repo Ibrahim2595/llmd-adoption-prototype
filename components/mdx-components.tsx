@@ -37,7 +37,6 @@ function makeHeading(
     const text = getTextContent(children)
     const id = toHeadingId(text)
     return (
-      // @ts-expect-error dynamic tag
       <Tag id={id} className={`group ${className}`} {...props}>
         {children}
         <HeadingAnchor id={id} />

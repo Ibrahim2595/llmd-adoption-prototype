@@ -113,10 +113,11 @@ The navbar is the same component on every page. It never unmounts or reloads.
 
 - **Left**: llm-d full logotype (`public/img/llm-d-logotype-and-icon.png`, ~120px wide, vertically centered)
 - **Center**: four navigation tabs — **Docs**, **Simulator**, **Blog**, **Community**
-- **Right**: GitHub badge + "Join Slack" button + **ThemeToggle** (rightmost item)
+- **Right**: GitHub badge (with star count) + "Join Slack" button + **ThemeToggle** (rightmost item)
+- GitHub badge shows "★ 2.9k" as a small attached badge (gray-200 bg, gray-700 text, text-xs, rounded, px-2). Static value for now — TODO comment in code to replace with live fetch from `https://api.github.com/repos/llm-d/llm-d` (.stargazers_count)
 - Sticky top, white background (`dark:bg-gray-900`), 1px bottom border gray-200 (`dark:border-gray-700`)
 - Active tab: purple text or thin 2px purple bottom border
-- Mobile: hamburger icon opening full-width panel with all links + theme toggle row
+- Mobile: hamburger icon opening full-width panel with all links + theme toggle row; star badge shown in mobile GitHub link too
 - The Docs tab links to /docs/getting-started (the docs landing)
 - No search bar in the prototype (add later)
 
@@ -142,7 +143,7 @@ The navbar is the same component on every page. It never unmounts or reloads.
 ### Layout
 Single centered column, `max-w-6xl`, `px-6`. All content shares the same container width. No logo on the landing page — logo is in the navbar only; do not repeat it in the hero.
 
-**Five sections, each separated by `mt-20`:**
+**Six sections, each separated by `mt-20`:**
 
 **1. Hero** (`pt-24`, flex row left/right split, stack on mobile):
 - Left (`flex-[55]`): headline `text-4xl font-semibold text-gray-900 max-w-xl`, subtitle `text-base text-gray-500`, two buttons (purple "Get Started" → prerequisites, gray-border "Try the Simulator" → /simulator)
@@ -158,7 +159,25 @@ Single centered column, `max-w-6xl`, `px-6`. All content shares the same contain
 
 **4. Performance** (`mt-20`): 3 dashed-border placeholder cards, `text-5xl font-bold text-gray-300` metric, "Benchmarks coming soon" footer link
 
-**5. Community** (`mt-20 mb-20`): full-width gray-50 block (`bg-gray-50 rounded-lg p-10 text-center`) — no max-w constraint; spans the full content column width
+**5. Company Logos** (`mt-20`): single row of contributor company logos, horizontally centered, `gap-8 md:gap-10`, wraps on mobile. Companies in order: IBM, Google, Red Hat, NVIDIA, CoreWeave, AMD. Followed by "+ more" in gray-400. No card, no background, no heading. Logo files in `public/img/logos/`.
+
+Logo sizing (optical consistency at ~28px target height):
+- IBM (`ibm.png`): `h-7` (28px) — square IBM bars icon, white rect baked-in
+- Google (`google.png`): `h-7` (28px) — wide colorful logotype on transparent bg
+- Red Hat (`redhat.png`): `h-6` (24px) — wide horizontal logo, reduced for visual balance
+- NVIDIA (`nvidia.png`): `h-9` (36px) — stacked icon+text, needs more height
+- CoreWeave (`coreweave.svg`): `h-5` (20px) — very wide, reduced to avoid overwhelming
+- AMD (`amd.svg`): `h-7` (28px) — horizontal AMD chevron mark
+
+Dark mode per logo:
+- IBM: `dark:invert` — white rect bg becomes dark, black bars become white ✓
+- Google: no dark treatment — colorful letters on transparent bg, works on both backgrounds
+- Red Hat: `dark:invert` — red+black on transparent; accepted color shift for visibility
+- NVIDIA: `dark:invert` — green+black on transparent; accepted color shift for visibility
+- CoreWeave: `dark:invert` — blue+black on transparent; accepted color shift for visibility
+- AMD: `dark:invert` — black-only mark on transparent; becomes white ✓
+
+**6. Community** (`mt-20 mb-20`): full-width gray-50 block (`bg-gray-50 rounded-lg p-10 text-center`) — no max-w constraint; spans the full content column width
 
 No GitHub/Slack links on the page — they are already in the navbar and footer.
 
@@ -464,16 +483,17 @@ No emojis anywhere.
 - Security Announcements, Report a Vulnerability (Callout warning with email), When to/not to report, Response process, Public Disclosure Timing
 
 ### Real URLs used
-- Slack: https://llm-d.slack.com
+- Slack: https://llm-d.ai/slack
+- GitHub repo: https://github.com/llm-d/llm-d
 - GitHub org: https://github.com/llm-d
 - Calendar: https://red.ht/llm-d-public-calendar
 - Google Groups: https://groups.google.com/g/llm-d-contributors
 - Google Drive (public): https://drive.google.com/drive/folders/1cN2YQiAZFJD_cb1ivlyukuNwecnin6lZ
 - Security email: llm-d-security-reporting@googlegroups.com
 - Security Announcements: https://groups.google.com/u/1/g/llm-d-security-announce
-- LinkedIn: https://linkedin.com/company/llm-d
+- LinkedIn: https://www.linkedin.com/company/llm-d/
 - Bluesky: https://bsky.app/profile/llm-d.ai
-- X: https://x.com/_llm_d_
+- X (Twitter): https://x.com/_llm_d_
 - Reddit: https://www.reddit.com/r/llm_d/
 - YouTube: https://www.youtube.com/@llm-d-project
 

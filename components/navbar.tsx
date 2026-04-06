@@ -74,6 +74,7 @@ export function Navbar() {
 
         {/* Right: GitHub badge + theme toggle + Join Slack (desktop) */}
         <div className="hidden md:flex items-center gap-3 flex-shrink-0">
+          {/* TODO: replace static star count with live fetch from https://api.github.com/repos/llm-d/llm-d (.stargazers_count) */}
           <a
             href="https://github.com/llm-d/llm-d"
             target="_blank"
@@ -82,6 +83,9 @@ export function Navbar() {
           >
             <GithubIcon />
             GitHub
+            <span className="ml-0.5 px-2 py-0.5 text-xs rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+              ★ 2.9k
+            </span>
           </a>
           <a
             href="https://llm-d.ai/slack"
@@ -134,6 +138,9 @@ export function Navbar() {
             >
               <GithubIcon />
               GitHub
+              <span className="ml-0.5 px-2 py-0.5 text-xs rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                ★ 2.9k
+              </span>
             </a>
             <a
               href="https://llm-d.ai/slack"

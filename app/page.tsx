@@ -238,7 +238,50 @@ export default function HomePage() {
           </p>
         </section>
 
-        {/* ── Section 5: Community ── */}
+        {/* ── Section 5: Company Logos ── */}
+        <section className="mt-20">
+          <div className="flex flex-wrap items-center justify-center gap-8 md:gap-10">
+            {/* IBM — black bars on white rect background; invert in dark mode */}
+            <img
+              src="/img/logos/ibm.png"
+              alt="IBM"
+              className="h-7 w-auto dark:invert"
+            />
+            {/* Google — RGBA, colorful text on transparent; works in both modes */}
+            <img
+              src="/img/logos/google.png"
+              alt="Google"
+              className="h-7 w-auto"
+            />
+            {/* Red Hat — red + black on transparent; invert in dark mode */}
+            <img
+              src="/img/logos/redhat.png"
+              alt="Red Hat"
+              className="h-6 w-auto dark:invert"
+            />
+            {/* NVIDIA — stacked icon + text, green + black on transparent; invert in dark mode */}
+            <img
+              src="/img/logos/nvidia.png"
+              alt="NVIDIA"
+              className="h-9 w-auto dark:invert"
+            />
+            {/* CoreWeave — blue + black on transparent; invert in dark mode */}
+            <img
+              src="/img/logos/coreweave.svg"
+              alt="CoreWeave"
+              className="h-5 w-auto dark:invert"
+            />
+            {/* AMD — black only on transparent; invert in dark mode */}
+            <img
+              src="/img/logos/amd.svg"
+              alt="AMD"
+              className="h-7 w-auto dark:invert"
+            />
+            <span className="text-sm text-gray-400 dark:text-gray-500">+ more</span>
+          </div>
+        </section>
+
+        {/* ── Section 6: Community ── */}
         <section className="mt-20 mb-20">
           <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-10 text-center">
             <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-50">Built in the open</h2>
@@ -256,7 +299,7 @@ export default function HomePage() {
                 GitHub
               </a>
               <a
-                href="https://llm-d.slack.com"
+                href="https://llm-d.ai/slack"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 hover:text-purple transition-colors"

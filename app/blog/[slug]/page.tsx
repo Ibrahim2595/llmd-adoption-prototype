@@ -100,7 +100,7 @@ export default async function BlogPostPage({
       )}
 
       <div className="mt-10 prose-custom">
-        <MDXRemote source={source} components={mdxComponents as Record<string, unknown>} />
+        <MDXRemote source={source} components={mdxComponents} />
       </div>
 
     </div>
