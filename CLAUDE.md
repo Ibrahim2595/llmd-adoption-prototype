@@ -4,7 +4,7 @@
 This is the new website for llm-d, an open-source Kubernetes-native distributed LLM inference framework. The site serves as the primary web presence at https://llm-d.ai/.
 
 ## Tech Stack
-- **Framework**: Next.js 14 with App Router
+- **Framework**: Next.js 15 with App Router
 - **Styling**: Tailwind CSS
 - **Language**: TypeScript
 - **Content**: MDX via next-mdx-remote (docs and blog are .mdx files in content/)

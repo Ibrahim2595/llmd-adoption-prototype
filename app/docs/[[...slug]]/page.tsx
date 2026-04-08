@@ -25,7 +25,7 @@ function Breadcrumb({ slug }: { slug: string[] }) {
 }
 
 interface PageProps {
-  params: { slug?: string[] }
+  params: Promise<{ slug?: string[] }>
 }
 
 export async function generateStaticParams() {
@@ -37,7 +37,7 @@ export async function generateStaticParams() {
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
-  const slug = params.slug ?? []
+  const { slug = [] } = await params
   if (slug.length === 0) return {}
   try {
     const { frontmatter } = getMdxBySlug(slug)
@@ -51,7 +51,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 }
 
 export default async function DocsPage({ params }: PageProps) {
-  const slug = params.slug ?? []
+  const { slug = [] } = await params
 
   if (slug.length === 0) {
     redirect('/docs/getting-started')

@@ -6,7 +6,7 @@ The new website for llm-d — an open-source Kubernetes-native distributed LLM i
 
 ## Prerequisites
 
-- Node.js 18+
+- Node.js 22+
 - pnpm
 
 ## Getting started

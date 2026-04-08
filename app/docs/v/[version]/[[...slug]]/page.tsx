@@ -34,7 +34,7 @@ function Breadcrumb({ version, slug }: { version: string; slug: string[] }) {
 export const dynamicParams = false
 
 interface PageProps {
-  params: { version: string; slug?: string[] }
+  params: Promise<{ version: string; slug?: string[] }>
 }
 
 export async function generateStaticParams() {
@@ -51,7 +51,7 @@ export async function generateStaticParams() {
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
-  const { version, slug = [] } = params
+  const { version, slug = [] } = await params
   if (slug.length === 0) return {}
   try {
     const { frontmatter } = getMdxBySlug(slug, version)
@@ -65,7 +65,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 }
 
 export default async function VersionedDocsPage({ params }: PageProps) {
-  const { version, slug = [] } = params
+  const { version, slug = [] } = await params
 
   const versionEntry = versions.find((v) => v.version === version)
   if (!versionEntry) notFound()
