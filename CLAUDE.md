@@ -342,57 +342,66 @@ Layout structure (flex row):
 - `app/simulator/page.tsx` — thin server component (exports metadata), renders `<SimulatorClient />`
 - `components/simulator-client.tsx` — full client component with all interactive state
 
+### Design Philosophy
+TensorFlow Playground-inspired: inputs across the top, interactive visualization in the center, metrics below. All on one screen. **Semi-live**: changing any input immediately recalculates mock metrics — no "Run Simulation" button.
+
 ### Layout
-Full-width, gray-50 background. Two panels: left config (~40%, max 480px, white bg, border-r) + right results (flex-1, gray-50). Both panels scroll independently (overflow-y-auto). Desktop: side-by-side. Mobile (< lg): stacked vertically.
+Full-width, gray-50 background (`dark:bg-[#1a2332]`). Three horizontal zones stacked:
+1. **Top bar** — dark gray-900 control strip (fixed height, ~80px)
+2. **Center** — system visualization (fills remaining space, scrollable)
+3. **Metrics panel** — aggregate SLO metrics + comparison features (below visualization)
 
-### Left Panel — Configuration
-- Heading + subtitle
-- **Load Preset** dropdown: Small Model/Single GPU, Large MoE/Multi-GPU, High Throughput Batch, Low Latency Interactive — auto-fills all form fields
-- **Form sections** (each with `pl-4 border-l border-gray-200`): Model & Hardware, Cluster Configuration, Workload
-- **Advanced Settings** (collapsible with chevron): Workload Type, Total KV Blocks, Disaggregated Serving toggle, Prefix Caching toggle
-- **Toggle switches**: gray-200 off, purple on, white circle thumb
-- **Run Simulation** button: `bg-[#7B2D8E]` purple, full width, py-3
-- **Saved Simulations** area: appears after first Save, shows count badge + chip list + Compare button (when ≥2 saved)
+### Top Bar (Controls)
+Dark `bg-gray-900` strip with white text. Horizontal row of labeled controls (labels: gray-400, text-xs, uppercase, tracking-wide):
+1. **Workload** dropdown: Chatbot, Agentic, RL
+2. **Model** dropdown: qwen/qwen3-14b, meta-llama/Llama-3.1-70B, deepseek-ai/DeepSeek-R1, mistralai/Mixtral-8x7B
+3. **Accelerator** dropdown: NVIDIA H100, NVIDIA A100 80GB, AMD MI300X
+4. **Routing Strategy** dropdown: Queue Depth (default), Precise Prefix Caching, KV Utilization
+5. **Request Rate** slider (1–100 req/s) — purple (`#7B2D8E`) track fill, current value shown inline
+6. **Instances** stepper (+ / − buttons, range 1–8)
 
-### Right Panel — Results
-Three states:
-1. **Empty**: centered chart SVG + gray-400 text
-2. **Results** (after Run Simulation):
-   - Green "Completed" badge + "Save to Compare" button
-   - **Recommended Docs** callout (gray-50 box): contextual links based on routing policy / toggles
-   - **Latency** metrics: 4-column grid cards (TTFT row, E2E row, ITL row, Sched Delay)
-   - **Throughput**: 3-column (Throughput tok/s, Req/sec, Duration)
-   - **Request Statistics**: 4-column × 2 rows (Completed, Injected, Queued, Running, TimedOut, Dropped, LengthCapped, Preemptions)
-   - **Token Statistics**: 2 wide cards (Prompt Tokens, Output Tokens)
-   - **Deployment Config**: tabbed (values.yaml / kubectl apply) CodeBlock generated from form values, Copy Config button
-   - **Export JSON** (downloads JSON blob) + **Reset** buttons
-3. **Comparison** (when ≥2 saved + Compare clicked):
-   - Two-column layout comparing key metrics (TTFT, E2E, Throughput)
-   - Better metric: `text-green-700`; worse: `text-red-600`
-   - Config summary at top of each column
-   - "← Back to Simulator" button
+### Center: System Visualization
+- **Workload source box** (top center): white card showing selected workload + request rate
+- **Animated flow dots**: small purple dots flowing downward from the workload box. Count and speed scale with request rate. CSS keyframe animation (`flowDown`).
+- **llm-d container**: large rounded rectangle (white/dark, gray-200 border). Shows "llm-d" label + routing strategy badge.
+  - **Instance cards** inside: number matches Instances control (1–8). Each card shows: instance_N title, Queue Depth, Batch Size, KV Utilization (progress bar, red when >80%), Cache Hit Rate (progress bar), Completed Requests, accelerator short name footer.
+  - Cards with `queueDepth > 5` get amber border glow (hot instance indicator).
+  - Cards arranged in a flex-wrap row.
 
-### Mock Data (BASE_METRICS)
-```
-TTFT: mean=30.17ms p90=44.76 p95=49.20 p99=53.16
-E2E: mean=4677.15ms p90=7370.21 p95=8079.38 p99=10499.43
-ITL: mean=8.67ms p90=9.60 p95=9.75 p99=9.88
-SchedDelay P99: 7.72ms
-Throughput: 3148.8 tok/s | Req/sec: 5.83 | Duration: 17.15s
-Completed: 100 | Injected: 100 | all others: 0
-Prompt: 54508 | Output: 54017
-```
+### Metrics Panel
+Below the visualization, inside a white rounded card:
+- **llm-d metrics row** (5 cards): TTFT Mean, TTFT P99, E2E Latency, Throughput, Requests/sec
+  - Color coding: green/amber/red based on SLO thresholds
+  - When baseline comparison is active, each card shows a green improvement badge (e.g., "↓ 30%")
+- **vLLM Baseline row** (optional, toggled): dashed gray-50 cards showing worse baseline metrics
+  - Baseline multipliers: TTFT ×1.4, TTFT P99 ×1.45, E2E ×1.3, Throughput ×0.7, req/s ×0.72
+- **Toggle**: "Compare with vLLM baseline" pill button (filled when active)
+- **Save Scenario** button + saved scenario chips (with × to remove)
+- **Compare Scenarios** button appears when ≥2 scenarios saved → opens comparison modal
 
-Saved simulations get ±10% random variance applied to numeric metrics via `varyMetrics()`.
+### Comparison Modal
+Full-screen overlay. Table with one column per saved scenario, one row per metric. Best value in row: `text-green-600`, worst: `text-red-600`.
 
-### Recommended Docs Logic
-- Prefix Cache Aware routing → /docs/production-deployment/inference-scheduling/prefix-cache-scheduling
-- Predicted Latency routing → /docs/production-deployment/inference-scheduling/predicted-latency-scheduling
-- Disaggregated serving ON → /docs/production-deployment/scheduling-pd
-- Prefix caching ON → /docs/core-concepts/tiered-kv-cache
-- Always → /docs/getting-started/prerequisites
+### Mock Data Behavior
 
-All static/mock for the prototype — simulation backend connects later.
+**Base values (H100, qwen3-14b, Chatbot, Queue Depth):**
+- TTFT base: 30ms × model_multiplier × accelerator_multiplier
+- E2E base: 4677ms × model_multiplier × accelerator_multiplier
+- Throughput base: 3148 tok/s ÷ model_multiplier ÷ accelerator_multiplier × instances
+
+**Input → metric relationships:**
+- Request Rate ↑: queue depth ↑, KV utilization ↑, TTFT/E2E ↑, throughput plateaus at saturation
+- Instances ↑: per-instance load ↓, aggregate throughput ↑
+- Model (70B, DeepSeek-R1): higher base latency multipliers (2.1×, 2.6×)
+- Accelerator (A100, MI300X): higher latency multipliers (1.35×, 1.15×)
+- Workload (Agentic): higher queue multiplier (1.5×), bursty; (RL): higher batch, latency-tolerant
+- Routing (Prefix Caching): cache hit 70–90%, TTFT ×0.65 reduction; (KV Util): best throughput multiplier (1.1×)
+
+**Organic jitter**: seed increments every 3 seconds → values shift ±5% naturally without being jumpy.
+
+**Saved scenarios**: `varyMetrics()` applies ±12% random variance so comparisons show real differences.
+
+All mock — simulation backend connects later.
 
 ## Page: Blog (`/blog`)
 
