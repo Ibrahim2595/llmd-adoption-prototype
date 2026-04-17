@@ -1,11 +1,122 @@
 ---
-title: "Scheduling With P/D Disaggregation"
-description: "Run intelligent inference scheduling alongside disaggregated prefill/decode for peak throughput on multi-node deployments."
+title: "Intelligent Inference Scheduling With P/D"
+description: "Scheduling across disaggregated prefill and decode nodes."
 sidebar_order: 5
 ---
+This guide demonstrates how to deploy large language models using vLLM's P/D disaggregation support with NIXL. This guide has been validated on:
 
-This page covers combining gateway scheduling with prefill/decode disaggregation. Content is coming soon.
+- An 8xH200 cluster with InfiniBand networking
+- An 8xH200 cluster on GKE with RoCE networking
 
-<Callout type="info">
-  This page is under construction. Want to contribute? Check our [Contributing Guidelines](/community) or reach out on [Slack](https://llm-d.ai/slack).
+In this example, we demonstrate a deployment of `openai/gpt-oss-120b` with 4 TP=1 Prefill Workers and 1 TP=4 Decode Worker.
+
+<Callout type="warning">
+We are still investigating and optimizing performance for hardware configurations other than H200 with InfiniBand/RoCE networking.
 </Callout>
+
+## P/D Best Practices
+
+P/D disaggregation provides more flexibility in navigating the trade-off between throughput and interactivity. Due to the elimination of prefill interference to the decode phase, P/D disaggregation can achieve lower inter token latency (ITL), improving interactivity.
+
+We suggest exploring P/D disaggregation for workloads with:
+
+- **Large models** (e.g. gpt-oss-120b+, not gpt-oss-20B)
+- **Longer input sequence lengths** (e.g 10k ISL | 1k OSL, not 200 ISL | 200 OSL)
+- **Sparse MoE architectures** with opportunities for wide-EP
+
+As you tune your P/D deployments, focus on:
+
+- **Heterogeneous Parallelism**: deploy P workers with less parallelism and more replicas; D workers with more parallelism and fewer replicas
+- **xPyD Ratios**: tune the ratio of P workers to D workers for your ISL/OSL ratio
+
+## Hardware Requirements
+
+This guide expects 8 NVIDIA GPUs of any kind with RDMA via InfiniBand or RoCE between all pods.
+
+For Intel HPU deployments: Intel Gaudi2/3 machine with at least 2 Gaudi2 cards.
+
+## Prerequisites
+
+- Have the [proper client tools installed on your local system](https://github.com/llm-d/llm-d/blob/main/helpers/client-setup/README.md) to use this guide.
+- Configure and deploy your [Gateway control plane](https://github.com/llm-d/llm-d/blob/main/guides/prereq/gateway-provider/README.md).
+- Have the [Monitoring stack](https://github.com/llm-d/llm-d/blob/main/docs/monitoring/README.md) installed on your system.
+- Create a namespace for installation.
+
+  ```bash
+  export NAMESPACE=llm-d-pd # or any other namespace (shorter names recommended)
+  kubectl create namespace ${NAMESPACE}
+  ```
+
+- Create the `llm-d-hf-token` secret in your target namespace with the key `HF_TOKEN` matching a valid HuggingFace token.
+
+## Installation
+
+### Deploy
+
+```bash
+cd guides/pd-disaggregation
+helmfile apply -n ${NAMESPACE}
+```
+
+For Intel HPU deployments:
+
+```bash
+cd guides/pd-disaggregation
+helmfile apply -e hpu -n ${NAMESPACE}
+```
+
+### Gateway Options
+
+```bash
+helmfile apply -e agentgateway -n ${NAMESPACE} # preferred agentgateway path
+helmfile apply -e kgateway -n ${NAMESPACE}     # deprecated migration path
+```
+
+<Callout type="warning">
+`kgateway` is deprecated in llm-d and will be removed in the next release. Prefer `agentgateway` for new self-installed inference deployments.
+</Callout>
+
+#### OCI (Oracle Cloud Infrastructure)
+
+For OCI deployments with SR-IOV RDMA networking:
+
+```bash
+helmfile apply -e oci_amd -n ${NAMESPACE}
+```
+
+An OKE Cluster with RDMA networking must be deployed prior to launching llm-d on OCI. Refer to the [oci-hpc-oke stack](https://github.com/oracle-quickstart/oci-hpc-oke) for deployment.
+
+**Common gotchas:**
+- If you change tensor parallelism, update both `podAnnotations` VF count and `nvidia.com/sriov-rdma-vf` resource requests to match.
+- Wrong `UCX_IB_GID_INDEX` causes silent fallback to TCP — set `UCX_PROTO_INFO=y` to verify RDMA is selected.
+- `IPC_LOCK` capability is required for RDMA pinned memory; without it NIXL transfers will fail.
+
+### Install HTTPRoute
+
+```bash
+kubectl apply -f httproute.yaml -n ${NAMESPACE}
+```
+
+For GKE:
+
+```bash
+kubectl apply -f httproute.gke.yaml -n ${NAMESPACE}
+```
+
+## Verify the Installation
+
+```bash
+helm list -n ${NAMESPACE}
+```
+
+Expected releases: `gaie-pd`, `infra-pd`, `ms-pd`.
+
+## Cleanup
+
+```bash
+cd guides/pd-disaggregation
+helmfile destroy -n ${NAMESPACE}
+kubectl delete -f httproute.yaml -n ${NAMESPACE}
+```
+
+For full details including benchmark results and configuration customization, see the [pd-disaggregation guide on GitHub](https://github.com/llm-d/llm-d/blob/main/guides/pd-disaggregation/README.md).

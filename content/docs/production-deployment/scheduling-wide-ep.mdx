@@ -1,11 +1,118 @@
 ---
-title: "Scheduling With Wide Expert Parallelism"
-description: "Configure llm-d for MoE models with wide expert parallelism across many GPUs, combined with intelligent scheduling."
+title: "Intelligent Inference Scheduling With Wide EP"
+description: "Scheduling with wide expert parallelism using LeaderWorkerSet."
 sidebar_order: 6
 ---
+This guide demonstrates how to deploy DeepSeek-R1-0528 using vLLM's P/D disaggregation support with NIXL in a wide expert parallel pattern with LeaderWorkerSets. This guide has been validated on:
 
-This page covers scheduling for mixture-of-experts models with wide expert parallelism. Content is coming soon.
+- A 32xH200 cluster with InfiniBand networking
+- A 32xH200 cluster on GKE with RoCE networking
+- A 32xB200 cluster on GKE with RoCE networking
+
+In this example, we demonstrate a deployment of `DeepSeek-R1-0528` with 1 DP=16 Prefill Worker and 1 DP=16 Decode Worker.
+
+<Callout type="warning">
+We are still investigating and optimizing performance for hardware configurations other than H200/B200 with InfiniBand/RoCE networking.
+</Callout>
+
+## Hardware Requirements
+
+This guide requires 32 NVIDIA H200 or B200 GPUs and InfiniBand or RoCE RDMA networking.
 
 <Callout type="info">
-  This page is under construction. Want to contribute? Check our [Contributing Guidelines](/community) or reach out on [Slack](https://llm-d.ai/slack).
+The pods leveraging inter-node EP must be deployed in a cluster environment with full mesh network connectivity. The DeepEP backend used in WideEP requires All-to-All RDMA connectivity. Every NIC on a host must be able to communicate with every NIC on all other hosts. Networks restricted to communicating only between matching NIC IDs (rail-only connectivity) will fail.
 </Callout>
+
+## Prerequisites
+
+- Have the [proper client tools installed on your local system](https://github.com/llm-d/llm-d/blob/main/helpers/client-setup/README.md) to use this guide.
+- You have deployed the [LeaderWorkerSet controller](https://lws.sigs.k8s.io/docs/installation/).
+- Configure and deploy your [Gateway control plane](https://github.com/llm-d/llm-d/blob/main/guides/prereq/gateway-provider/README.md).
+- Have the [Monitoring stack](https://github.com/llm-d/llm-d/blob/main/docs/monitoring/README.md) installed on your system.
+- Create a namespace for installation.
+
+  ```bash
+  export NAMESPACE=llm-d-wide-ep # or any other namespace (shorter names recommended)
+  kubectl create namespace ${NAMESPACE}
+  ```
+
+- Create the `llm-d-hf-token` secret in your target namespace with the key `HF_TOKEN` matching a valid HuggingFace token.
+
+## Installation
+
+```bash
+cd guides/wide-ep-lws/
+```
+
+### Deploy Model Servers
+
+GKE and CoreWeave are tested Kubernetes providers for this guide.
+
+#### GKE (H200)
+
+```bash
+kubectl apply -k ./manifests/modelserver/gke -n ${NAMESPACE}
+```
+
+#### GKE (B200)
+
+```bash
+kubectl apply -k ./manifests/modelserver/gke-a4 -n ${NAMESPACE}
+```
+
+#### CoreWeave
+
+```bash
+kubectl apply -k ./manifests/modelserver/coreweave -n ${NAMESPACE}
+```
+
+### Deploy InferencePool
+
+#### GKE
+
+```bash
+helm install llm-d-infpool \
+  -n ${NAMESPACE} \
+  -f ./manifests/inferencepool.values.yaml \
+  --set "provider.name=gke" \
+  oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool \
+  --version v1.4.0
+```
+
+#### Istio
+
+```bash
+helm install llm-d-infpool \
+  -n ${NAMESPACE} \
+  -f ./manifests/inferencepool.values.yaml \
+  --set "provider.name=istio" \
+  oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool \
+  --version v1.4.0
+```
+
+#### Agentgateway
+
+```bash
+helm install llm-d-infpool \
+  -n ${NAMESPACE} \
+  -f ./manifests/inferencepool.values.yaml \
+  --set "provider.name=none" \
+  oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool \
+  --version v1.4.0
+```
+
+<Callout type="warning">
+`kgateway` is deprecated in llm-d and will be removed in the next release. Prefer `agentgateway` for new self-installed inference deployments.
+</Callout>
+
+## Tuning Selective PD
+
+As with standard P/D disaggregation, the `wide-ep-lws` guide supports selective PD. For information on this, refer to the [P/D disaggregation guide](/docs/production-deployment/scheduling-pd).
+
+## Verify the Installation
+
+```bash
+helm list -n ${NAMESPACE}
+```
+
+For full details including benchmark results and cleanup instructions, see the [wide-ep-lws guide on GitHub](https://github.com/llm-d/llm-d/blob/main/guides/wide-ep-lws/README.md).

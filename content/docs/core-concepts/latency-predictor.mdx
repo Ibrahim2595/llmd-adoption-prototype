@@ -1,11 +1,11 @@
 ---
 title: "Latency Predictor"
-description: "How llm-d's lightweight latency predictor model estimates per-request end-to-end latency to enable smarter scheduling decisions."
+description: "The latency predictor model used for scheduling decisions."
 sidebar_order: 5
 ---
 
-This page covers the latency predictor — a small model trained on request traces that powers predicted-latency-based scheduling. Content is coming soon.
+The latency predictor is a lightweight model that estimates the expected end-to-end latency for a given request before it is dispatched, enabling the inference scheduler to make smarter routing decisions that minimize tail latency and prevent individual replicas from becoming bottlenecks.
 
 <Callout type="info">
-  This page is under construction. Want to contribute? Check our [Contributing Guidelines](/community) or reach out on [Slack](https://llm-d.ai/slack).
+This page is under construction. Want to contribute? Check our [Contributing Guidelines](/community/contribute) or reach out on [Slack](https://llm-d.ai/slack).
 </Callout>

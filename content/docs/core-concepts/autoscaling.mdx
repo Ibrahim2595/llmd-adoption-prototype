@@ -1,11 +1,11 @@
 ---
 title: "Autoscaling"
-description: "How llm-d automatically scales model server replica counts based on queue depth, GPU utilization, and request rate."
+description: "How llm-d autoscales model server replicas based on load."
 sidebar_order: 3
 ---
 
-This page covers horizontal autoscaling of model server pools in llm-d. Content is coming soon.
+llm-d provides SLO-aware autoscaling strategies that react to inference-specific signals such as queue depth, KV cache utilization, and in-flight request counts — rather than lagging indicators like GPU utilization. This page explains the autoscaling architecture and the different strategies available for homogeneous and heterogeneous deployments.
 
 <Callout type="info">
-  This page is under construction. Want to contribute? Check our [Contributing Guidelines](/community) or reach out on [Slack](https://llm-d.ai/slack).
+This page is under construction. Want to contribute? Check our [Contributing Guidelines](/community/contribute) or reach out on [Slack](https://llm-d.ai/slack).
 </Callout>

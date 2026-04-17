@@ -1,57 +1,11 @@
 ---
 title: "Prerequisites"
-description: "Cluster requirements, tooling, and access you need before deploying llm-d."
-sidebar_order: 2
+description: "What you need before deploying llm-d on Kubernetes."
+sidebar_order: 3
 ---
 
-Before installing llm-d, make sure your environment meets the following requirements.
+Before deploying llm-d, you will need a Kubernetes cluster with compatible accelerators, the appropriate CLI tools installed, and access to a HuggingFace token for pulling models. This page covers hardware requirements, software dependencies, and any access credentials you need to have ready.
 
-<Callout type="warning">
-  llm-d requires Kubernetes 1.27 or later. Earlier versions lack the container resource APIs needed for GPU scheduling and sidecar coordination. Check your cluster version before proceeding.
+<Callout type="info">
+This page is under construction. Want to contribute? Check our [Contributing Guidelines](/community/contribute) or reach out on [Slack](https://llm-d.ai/slack).
 </Callout>
-
-## Cluster Requirements
-
-- **Kubernetes**: 1.27+
-- **GPU nodes**: At least one node with NVIDIA A100 (40GB or 80GB), H100, or AMD MI300X. The GPU must be accessible via the standard device plugin.
-- **GPU Operator or device plugin**: NVIDIA GPU Operator 23.3+ or `k8s-device-plugin` v0.14+
-- **Storage**: NVMe-backed persistent volumes if you plan to use tiered KV cache offloading
-- **Networking**: Pod-to-pod latency under 1ms is recommended for disaggregated prefill/decode configurations
-
-## Required Tooling
-
-Install these on the machine you'll use to deploy llm-d:
-
-- `kubectl` 1.27+ (must match your cluster version within one minor version)
-- `helm` 3.12+
-- `python` 3.10+ with `pip` (for the llm-d CLI and benchmark tooling)
-
-```shell
-# Verify versions
-kubectl version --client
-helm version
-python --version
-```
-
-## Access and Credentials
-
-- **Cluster admin access**: `kubectl` must be configured with a `kubeconfig` that has cluster-admin or equivalent permissions (needed for CRD installation).
-- **Container registry access**: Your cluster must be able to pull images from `quay.io/llm-d/`. No authentication is required for public images.
-- **HuggingFace token** (optional): Required only if you are serving gated models like Llama 3. Set it as a Kubernetes Secret:
-
-```shell
-kubectl create secret generic hf-token \
-  --from-literal=token=hf_YOUR_TOKEN_HERE \
-  -n llm-d
-```
-
-## Namespace Setup
-
-All llm-d components run in the `llm-d` namespace by default. Create it before installing:
-
-```shell
-kubectl create namespace llm-d
-kubectl label namespace llm-d app.kubernetes.io/managed-by=llm-d
-```
-
-You are now ready to follow a quickstart guide.

@@ -1,0 +1,140 @@
+---
+title: "Intelligent Inference Scheduling"
+description: "Overview of llm-d's intelligent inference scheduling capabilities."
+sidebar_order: 1
+---
+
+This guide deploys the recommended out of the box [scheduling configuration](https://github.com/llm-d/llm-d-inference-scheduler/blob/main/docs/architecture.md) for most vLLM and SGLang deployments, reducing tail latency and increasing throughput through load-aware and prefix-cache aware balancing. This can be run on two GPUs that can load [Qwen/Qwen3-32B](https://huggingface.co/Qwen/Qwen3-32B).
+
+This profile defaults to the approximate prefix cache aware scorer, which only observes request traffic to predict prefix cache locality. The [precise prefix cache aware routing feature](/docs/production-deployment/inference-scheduling/prefix-cache-scheduling) improves hit rate by introspecting the vLLM instances for cache entries and will become the default in a future release.
+
+## Hardware Requirements
+
+This example out of the box uses 16 GPUs (8 replicas x 2 GPUs each) of any supported kind:
+
+- **NVIDIA GPUs**: Any NVIDIA GPU (support determined by the inferencing image used)
+- **AMD GPUs**: Any AMD GPU (support determined by the inferencing image used)
+- **Intel XPU/GPUs**: Intel Data Center GPU Max 1550 or compatible Intel XPU device
+- **Intel Gaudi (HPU)**: Gaudi 1, Gaudi 2, or Gaudi 3 with DRA support
+- **TPUs**: Google Cloud TPUs (when using GKE TPU configuration)
+
+**Using fewer accelerators**: Fewer accelerators can be used by modifying the `values.yaml` corresponding to your deployment. For example, to use only 2 GPUs with the default NVIDIA GPU deployment, update `replicas: 2` in [ms-inference-scheduling/values.yaml](https://github.com/llm-d/llm-d/blob/main/guides/inference-scheduling/ms-inference-scheduling/values.yaml).
+
+**Alternative CPU Deployment**: For CPU-only deployment (no GPUs required), see the Hardware Backends section for CPU-specific deployment instructions. CPU deployment requires Intel/AMD CPUs with 64 cores and 64GB RAM per replica.
+
+## Prerequisites
+
+- Have the [proper client tools installed on your local system](https://github.com/llm-d/llm-d/blob/main/helpers/client-setup/README.md) to use this guide.
+- Have the [Monitoring stack](https://github.com/llm-d/llm-d/blob/main/docs/monitoring/README.md) installed on your system.
+- Create a namespace for installation.
+
+  ```bash
+  export NAMESPACE=llm-d-inference-scheduler # or any other namespace (shorter names recommended)
+  kubectl create namespace ${NAMESPACE}
+  ```
+
+- Create the `llm-d-hf-token` secret in your target namespace with the key `HF_TOKEN` matching a valid HuggingFace token to pull models.
+- Configure and deploy your [Gateway control plane](https://github.com/llm-d/llm-d/blob/main/guides/prereq/gateway-provider/README.md).
+
+## Installation
+
+Use the helmfile to compose and install the stack. The Namespace in which the stack will be deployed will be derived from the `${NAMESPACE}` environment variable. If you have not set this, it will default to `llm-d-inference-scheduler` in this example.
+
+<Callout type="warning">
+When using long namespace names (like `llm-d-inference-scheduler`), the generated pod hostnames may become too long and cause issues due to Linux hostname length limitations (typically 64 characters maximum). Use shorter namespace names (like `llm-d`) and set `RELEASE_NAME_POSTFIX` to generate shorter hostnames.
+</Callout>
+
+### Deploy
+
+```bash
+cd guides/inference-scheduling
+```
+
+#### GPU deployment
+
+```bash
+helmfile apply -n ${NAMESPACE}
+```
+
+#### CPU-only deployment
+
+```bash
+helmfile apply -e cpu -n ${NAMESPACE}
+```
+
+<Callout type="info">
+By default, this guide creates 8 vLLM pods. For development and testing, the number can be reduced by updating `replicas` in [ms-inference-scheduling/values.yaml](https://github.com/llm-d/llm-d/blob/main/guides/inference-scheduling/ms-inference-scheduling/values.yaml).
+</Callout>
+
+### Gateway Options
+
+This uses Istio as the default gateway provider. To specify your gateway choice:
+
+```bash
+helmfile apply -e agentgateway -n ${NAMESPACE} # preferred agentgateway path
+helmfile apply -e kgateway -n ${NAMESPACE}     # deprecated migration path
+```
+
+<Callout type="warning">
+`kgateway` is deprecated in llm-d and will be removed in the next release. Prefer `agentgateway` for new self-installed inference deployments.
+</Callout>
+
+### Hardware Backends
+
+```bash
+helmfile apply -e amd  -n ${NAMESPACE} # AMD GPU hardware
+helmfile apply -e xpu  -n ${NAMESPACE} # Intel XPU hardware
+helmfile apply -e hpu  -n ${NAMESPACE} # Intel Gaudi (HPU) hardware
+helmfile apply -e gke_tpu_v6  -n ${NAMESPACE} # GKE TPU v6e hardware
+helmfile apply -e gke_tpu_v7  -n ${NAMESPACE} # GKE TPU v7 hardware
+helmfile apply -e cpu  -n ${NAMESPACE} # CPU-only hardware
+```
+
+### Inference Server Selection
+
+By default, this guide uses vLLM as the inference server. To use SGLang instead:
+
+```bash
+export INFERENCE_SERVER=sglang
+helmfile apply -n ${NAMESPACE}
+```
+
+### Install HTTPRoute
+
+```bash
+kubectl apply -f httproute.yaml -n ${NAMESPACE}
+```
+
+For GKE:
+
+```bash
+kubectl apply -f httproute.gke.yaml -n ${NAMESPACE}
+```
+
+## Verify the Installation
+
+List all helm releases to view the charts installed into your chosen namespace:
+
+```bash
+helm list -n ${NAMESPACE}
+```
+
+## Performance Benchmarks
+
+Comparing llm-d intelligent scheduling against a standard Kubernetes service endpoint routing directly to vLLM pods, at a fixed request rate of 60 req/s on 16 H100 GPUs (8 replicas, TP=2):
+
+| Metric | k8s (Mean) | llm-d (Mean) | Change |
+| :--- | :--- | :--- | :--- |
+| Requests/sec | 5.73 | 14.41 | +151.5% |
+| Output tokens/sec | 5,362 | 13,574 | +153.2% |
+| Total tokens/sec | 48,780 | 122,767 | +151.7% |
+| Request latency (s) | 105.4 | 67.9 | -35.6% |
+| TTFT (s) | 34.9 | 0.12 | -99.66% |
+| Inter-token latency (ms) | 70.42 | 67.66 | -3.9% |
+
+## Cleanup
+
+```bash
+cd guides/inference-scheduling
+helmfile destroy -n ${NAMESPACE}
+```

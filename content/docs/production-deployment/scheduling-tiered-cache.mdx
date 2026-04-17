@@ -1,11 +1,60 @@
 ---
-title: "Scheduling With Tiered Prefix Cache"
-description: "Combine prefix-cache-aware scheduling with tiered KV cache offloading for high cache hit rates across GPU, CPU, and NVMe tiers."
+title: "Intelligent Inference Scheduling With Tiered Prefix Cache"
+description: "Combining intelligent scheduling with tiered KV cache for maximum cache hit rates."
 sidebar_order: 4
 ---
+Efficient caching of prefix computation states to avoid recomputation is crucial for boosting LLM inference performance — including Time to First Token (TTFT) and overall throughput — while reducing cost. This guide covers the available prefix cache offloading strategies and how to configure them alongside intelligent inference scheduling.
 
-This page covers the combined configuration of prefix-cache scheduling and tiered KV cache. Content is coming soon.
+The prefix aware request scheduling optimizations in [intelligent inference scheduling](/docs/production-deployment/inference-scheduling) also apply here.
+
+## Storage Types
+
+### CPU RAM
+
+Enabling prefix cache offloading to CPU is recommended for most deployments:
+
+- Little operational overhead.
+- Typically more CPU RAM is available than accelerator HBM on the host, offering much larger cache capacity.
+- CPU-accelerator transfer is faster than recomputation in most cases.
+- Prefix cache storage tier-aware inference scheduling makes smart decisions based on cache tier.
+
+See the [CPU offloading guide](https://github.com/llm-d/llm-d/blob/main/guides/tiered-prefix-cache/cpu/README.md) to learn how to enable CPU RAM offloading with llm-d.
+
+### Local Disk
+
+Utilizing local disk storage can significantly increase the cache capacity. However, disks are typically significantly slower than CPU RAM.
+
+Consider local disk when:
+
+- Your workload can tolerate the latency overhead.
+- The cache capacity of local disks is sufficient for your use case.
+
+Otherwise, shared storage is recommended because it offers cache sharing between instances, has more options for cost/performance tradeoffs, and offers significantly larger capacity.
+
+To enable local disk offloading, refer to the [Storage Offloading Guide](https://github.com/llm-d/llm-d/blob/main/guides/tiered-prefix-cache/storage/README.md).
+
+### Shared Storage
+
+Offloading prefix cache to a shared (remote) storage tier provides several important benefits:
+
+- **Extended cache capacity** — Offers massive storage capacity independent of deployment size.
+- **Shared KV-cache across nodes** — Multiple inference replicas can access and reuse the same prefix cache.
+- **Fast scale-up** — New nodes can immediately reuse existing KV-cache data without warming up from scratch.
+- **Persistence across restarts or failures** — KV-cache data survives pod restarts, rescheduling, and node failures.
+- **Enterprise storage integration** — Can leverage mature enterprise storage systems (CephFS, GCP Lustre, IBM Storage Scale) with built-in durability, monitoring, and access control.
+
+Integration between the storage system and llm-d is achieved through vLLM connectors. Any storage connector compatible with vLLM can be used transparently within the llm-d project.
+
+To enable shared storage offloading, refer to the [Storage Offloading Guide](https://github.com/llm-d/llm-d/blob/main/guides/tiered-prefix-cache/storage/README.md).
+
+### P2P Cache Sharing
+
+A P2P network can be formed between inference engine instances to share caches in HBMs or CPU memory, enabling more cache sharing without needing additional storage resources. However, this strategy adds operational overhead and potential contention with model parallelism traffic. More recommendations will be added in future releases.
+
+## Cache Tiering
+
+Multiple cache tiers can be applied ordered by their cache read/write latencies, allowing frequently accessed caches to stay as close as possible to the accelerator, and large or less frequently accessed caches to be offloaded to slower tiers. The recommended configuration is always to set up HBM and CPU RAM tiers, and consider a third or fourth tier when your cache needs exceed HBM + CPU RAM capacity.
 
 <Callout type="info">
-  This page is under construction. Want to contribute? Check our [Contributing Guidelines](/community) or reach out on [Slack](https://llm-d.ai/slack).
+For detailed deployment instructions and Helm chart values, see the sub-guides in the [tiered-prefix-cache directory](https://github.com/llm-d/llm-d/blob/main/guides/tiered-prefix-cache/) on GitHub.
 </Callout>

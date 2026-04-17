@@ -1,11 +1,11 @@
 ---
 title: "Disaggregated Serving"
-description: "How llm-d splits the prefill and decode phases across separate pods to improve GPU utilization and reduce time-to-first-token."
+description: "How llm-d separates prefill and decode phases across different hardware."
 sidebar_order: 2
 ---
 
-This page covers disaggregated prefill/decode topology — one of llm-d's most impactful optimizations for high-throughput workloads. Content is coming soon.
+Disaggregated serving splits the LLM inference process into two independent phases — prefill and decode — that run on separate pods. Prefill workers process the input prompt and produce the initial KV cache, while decode workers stream token generation. This separation reduces time-to-first-token and enables more efficient hardware utilization for large models and long-context workloads.
 
 <Callout type="info">
-  This page is under construction. Want to contribute? Check our [Contributing Guidelines](/community) or reach out on [Slack](https://llm-d.ai/slack).
+This page is under construction. Want to contribute? Check our [Contributing Guidelines](/community/contribute) or reach out on [Slack](https://llm-d.ai/slack).
 </Callout>

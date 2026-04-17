@@ -1,82 +1,52 @@
 ---
 title: "The Inference Gateway"
-description: "How llm-d's inference gateway routes requests, enforces scheduling policies, and protects model servers from overload."
+description: "How llm-d's inference gateway routes and schedules requests across model replicas."
 sidebar_order: 1
-sidebar_group: "Core Concepts"
 ---
+This scheduler makes optimized routing decisions for inference requests to
+the llm-d inference framework.
 
-The inference gateway is the entry point for all inference traffic in a production llm-d deployment. It sits in front of a pool of model server replicas and makes per-request routing decisions based on real-time signals from each replica.
+## About
 
-## Why a Dedicated Gateway?
+This provides an "Endpoint Picker (EPP)" component to the llm-d inference
+framework which schedules incoming inference requests to the platform via a
+[Kubernetes](https://kubernetes.io) Gateway according to scheduler plugins. For more details on the
+llm-d inference scheduler architecture, routing logic, and different plugins
+(filters and scorers), including plugin configuration, see the [Architecture Documentation](https://github.com/llm-d/llm-d-inference-scheduler/blob/main/docs/architecture.md).
 
-Standard Kubernetes load balancers (Services with round-robin, or an ingress controller) distribute requests without any awareness of model server internals. This causes problems at inference scale:
+### Relation to GIE (IGW)
 
-- A replica with a full KV cache for a given prompt prefix is equally likely to receive the request as one that must recompute from scratch.
-- A replica that is already saturated (decode queue full) will continue receiving new requests until it times out.
-- There is no mechanism to reject or queue requests during traffic spikes.
+The EPP extends the [Gateway API Inference Extension (GIE)](https://github.com/kubernetes-sigs/gateway-api-inference-extension) project,
+which provides the API resources and machinery for scheduling. We add some
+custom features that are specific to llm-d here, such as [P/D Disaggregation](https://github.com/llm-d/llm-d-inference-scheduler/blob/main/docs/disagg_pd.md).
+The two projects collaborate closely as often a feature in llm-d might require
+enablement and extensions in the GIE code base.
+Unique and experimental features may start in llm-d and migrate, over time, to
+GIE. As a project goal, we prefer to upstream functionality to GIE when
+- it has matured sufficiently and has proven wide applicability and usefulness; and
+- it can be implemented in EPP alone (i.e., llm-d provides a full inference framework,
+  beyond scheduling).
 
-The llm-d inference gateway solves all three by pulling live metrics from every replica via a sidecar agent and using them to score routing targets.
+Note that in general features should go to the upstream [Gateway API Inference
+Extension (GIE)](https://github.com/kubernetes-sigs/gateway-api-inference-extension) project first if applicable. The GIE is a major dependency of
+ours, and where most general purpose inference features live. If you have
+something that you feel is general purpose or use, it probably should go to the
+GIE. If you have something that is llm-d specific then it should go here. If
+you are not sure whether your feature belongs here or in the GIE, feel free to
+create a [discussion](https://github.com/llm-d/llm-d-inference-scheduler/discussions/new?category=q-a) or ask on [Slack](https://llm-d.slack.com/).
 
-## Scheduling Policies
+A compatible [Gateway API](https://github.com/kubernetes-sigs/gateway-api) implementation is used as the Gateway. The Gateway
+API implementation must utilize [Envoy](https://github.com/envoyproxy/envoy) and support [ext-proc](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/ext_proc_filter), as this is the
+callback mechanism the EPP relies on to make routing decisions to model serving
+workloads currently.
 
-The gateway supports pluggable scheduling policies. Each policy scores available replicas for an incoming request and selects the best target.
+## Contributing
 
-### Prefix Cache Aware Scheduling
+Our community meeting is bi-weekly at Wednesday 10AM PDT ([Google Meet](https://meet.google.com/uin-yncz-rvg), [Meeting Notes](https://docs.google.com/document/d/1Pf3x7ZM8nNpU56nt6CzePAOmFZ24NXDeXyaYb565Wq4)).
 
-Inspects the request's prompt and compares its token prefix against the KV cache state reported by each replica. Routes to the replica with the highest prefix match — maximizing cache hits and minimizing time-to-first-token (TTFT).
+We currently utilize the [#sig-inference-scheduler](https://llm-d.slack.com/?redir=%2Fmessages%2Fsig-inference-scheduler) channel in llm-d Slack workspace for communications.
 
-<Callout type="tip">
-  Prefix cache aware scheduling delivers the largest TTFT improvements for workloads with shared system prompts or multi-turn conversations. Enable it when your cache hit rate under random routing is below 40%.
-</Callout>
+For large changes please [create an issue](https://github.com/llm-d/llm-d-inference-scheduler/issues/new) first describing the change so the
+maintainers can do an assessment, and work on the details with you.
 
-### Predicted Latency Based Scheduling
-
-Uses a lightweight latency predictor model (trained on historical request traces from your cluster) to estimate the end-to-end latency for routing a given request to each candidate replica. Routes to the replica with the lowest predicted latency.
-
-This policy handles heterogeneous request lengths well and is less sensitive to cache state than prefix-cache routing.
-
-### Round Robin
-
-The default fallback. Distributes requests evenly across all healthy replicas. Useful as a baseline for benchmarking and for workloads without significant prompt prefix sharing.
-
-## Admission and Flow Control
-
-The gateway enforces configurable admission and flow control to protect replicas from overload.
-
-| Parameter | Default | Description |
-|---|---|---|
-| `maxQueueDepth` | 100 | Maximum requests held in the gateway queue before new requests are rejected |
-| `maxConcurrency` | 32 | Maximum requests in flight per replica |
-| `timeoutSeconds` | 300 | Per-request timeout before the gateway returns a 504 |
-| `admissionPolicy` | `queue` | `queue` (buffer) or `reject` (immediate 429) on capacity |
-
-When the queue is full and `admissionPolicy: reject` is set, the gateway returns HTTP 429 with a `Retry-After` header based on the estimated drain time.
-
-## Replica Health and Draining
-
-The gateway continuously monitors replica readiness via Kubernetes readiness probes and the sidecar metrics endpoint. Replicas that fail health checks are removed from the routing pool within one probe cycle (default: 5 seconds).
-
-Graceful draining is supported: when a replica is marked for termination (e.g., during a rolling update), the gateway stops routing new requests to it while allowing in-flight requests to complete. The `drainTimeoutSeconds` parameter controls how long the gateway waits before forcibly terminating the connection.
-
-## Configuration
-
-The gateway is configured via the `InferenceGateway` CRD:
-
-```yaml
-apiVersion: inference.llm-d.ai/v1alpha1
-kind: InferenceGateway
-metadata:
-  name: main-gateway
-  namespace: llm-d
-spec:
-  targetRef:
-    group: inference.llm-d.ai
-    kind: ModelServerPool
-    name: qwen3-14b-pool
-  schedulingPolicy: prefixCacheAware
-  admissionControl:
-    maxQueueDepth: 100
-    maxConcurrency: 32
-    admissionPolicy: queue
-  drainTimeoutSeconds: 60
-```
+Contributions are welcome!

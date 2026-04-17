@@ -187,11 +187,12 @@ No GitHub/Slack links on the page — they are already in the navbar and footer.
 
 ```
 I. Getting Started  (folder: getting-started/, index sidebar_order: 1)
-   ├── Architecture Overview  (index.mdx, order: 1)
-   ├── Prerequisites  (prerequisites.mdx, order: 2)
-   └── Choose Your Quickstart  (quickstart/ sub-group, no index)
-       ├── Gateway-Free  (gateway-free.mdx, order: 3)
-       └── Gateway-Backed  (gateway-backed.mdx, order: 4)
+   ├── Overview  (index.mdx, order: 1) — docs landing page with NavCards
+   ├── Architecture  (architecture.mdx, order: 2)
+   ├── Prerequisites  (prerequisites.mdx, order: 3)
+   └── Quickstart  (quickstart/ sub-group, _group.json order: 4)
+       ├── Gateway-Free  (gateway-free.mdx, order: 1)
+       └── Gateway-Backed  (gateway-backed.mdx, order: 2)
 
 II. Core Concepts  (folder: core-concepts/, _group.json order: 2)
    ├── The Inference Gateway  (inference-gateway.mdx, order: 1)
@@ -201,13 +202,18 @@ II. Core Concepts  (folder: core-concepts/, _group.json order: 2)
    ├── Latency Predictor  (latency-predictor.mdx, order: 5)
    └── Synchronous and Asynchronous Processing  (sync-async-processing.mdx, order: 6)
 
-III. Local Guides  (folder: development-guides/, _group.json order: 3)
-   └── Accelerator Simulation  (accelerator-simulation.mdx, order: 1)
+III. Workload Guides  (folder: workload-guides/, _group.json order: 3) — NEW
+   ├── Model-as-a-Service  (model-as-a-service.mdx, order: 1)
+   ├── Agentic Inference  (agentic-inference.mdx, order: 2)
+   ├── Reinforcement Learning  (reinforcement-learning.mdx, order: 3)
+   ├── Batching & Job-Scoped Routing  (batching.mdx, order: 4)
+   └── Chatbot  (chatbot.mdx, order: 5)
 
 IV. Deployment Guides  (folder: production-deployment/, _group.json order: 4)
-   ├── Intelligent Inference Scheduling  (inference-scheduling/ sub-group, _group.json order: 1 — heading only, no landing page)
-   │   ├── With Precise Prefix Cache Aware Scheduling  (inference-scheduling/prefix-cache-scheduling.mdx, order: 2)
-   │   └── With Predicted Latency Based Scheduling  (inference-scheduling/predicted-latency-scheduling.mdx, order: 3)
+   ├── Intelligent Inference Scheduling  (inference-scheduling/ sub-group, _group.json order: 1)
+   │   ├── Intelligent Inference Scheduling  (index.mdx, order: 1)
+   │   ├── With Precise Prefix Cache Aware Scheduling  (prefix-cache-scheduling.mdx, order: 2)
+   │   └── With Predicted Latency Based Scheduling  (predicted-latency-scheduling.mdx, order: 3)
    ├── Scheduling With Tiered Prefix Cache  (scheduling-tiered-cache.mdx, order: 4)
    ├── Scheduling With P/D Disaggregation  (scheduling-pd.mdx, order: 5)
    ├── Scheduling With Wide Expert Parallelism  (scheduling-wide-ep.mdx, order: 6)
@@ -216,13 +222,15 @@ IV. Deployment Guides  (folder: production-deployment/, _group.json order: 4)
    └── Model Server Autoscaling  (model-server-autoscaling.mdx, order: 9)
 
 V. Observability & Operations  (folder: observability/, _group.json order: 5)
-   ├── Monitoring, Metrics & Tracing  (monitoring-metrics-tracing.mdx, order: 1)
-   ├── Troubleshooting  (troubleshooting.mdx, order: 2)
-   └── Infrastructure  (infrastructure.mdx, order: 3)
+   ├── Monitoring & Metrics  (monitoring-metrics.mdx, order: 1)
+   ├── Tracing  (tracing.mdx, order: 2)
+   ├── Troubleshooting  (troubleshooting.mdx, order: 3)
+   └── Infrastructure  (infrastructure.mdx, order: 4)
 
-VI. Benchmarking & Performance  (folder: benchmarking/, _group.json order: 6)
-   ├── Standardized Benchmark Methodologies  (methodology.mdx, order: 1)
-   └── Dynamic Benchmark Results  (benchmark-results.mdx, order: 2)
+VI. Developer Guides  (folder: development-guides/, _group.json order: 6) — RENAMED from "Local Guides"
+   ├── Accelerator Simulation  (accelerator-simulation.mdx, order: 1)
+   ├── Standardized llm-d-Benchmark Methodologies  (benchmark-methodology.mdx, order: 2)
+   └── Dynamic Benchmark Results  (benchmark-results.mdx, order: 3) — embeds https://llm-d.ai/prism
 
 VII. References  (folder: references/, _group.json order: 7)
    ├── Component Versions & Release Notes  (component-versions.mdx, order: 1)
@@ -552,24 +560,35 @@ llm-d/website/
 ├── content/
 │   ├── docs/
 │   │   ├── getting-started/
-│   │   │   ├── index.mdx                # Architecture Overview (landing)
+│   │   │   ├── index.mdx                # Overview (docs landing with NavCards)
+│   │   │   ├── architecture.mdx
 │   │   │   ├── prerequisites.mdx
 │   │   │   └── quickstart/
+│   │   │       ├── _group.json
 │   │   │       ├── gateway-free.mdx
 │   │   │       └── gateway-backed.mdx
 │   │   ├── core-concepts/
+│   │   │   ├── _group.json
 │   │   │   ├── inference-gateway.mdx
 │   │   │   ├── disaggregated-serving.mdx
 │   │   │   ├── autoscaling.mdx
 │   │   │   ├── tiered-kv-cache.mdx
 │   │   │   ├── latency-predictor.mdx
 │   │   │   └── sync-async-processing.mdx
-│   │   ├── development-guides/
-│   │   │   └── accelerator-simulation.mdx
+│   │   ├── workload-guides/             # NEW section
+│   │   │   ├── _group.json
+│   │   │   ├── model-as-a-service.mdx
+│   │   │   ├── agentic-inference.mdx
+│   │   │   ├── reinforcement-learning.mdx
+│   │   │   ├── batching.mdx
+│   │   │   └── chatbot.mdx
 │   │   ├── production-deployment/
-│   │   │   ├── inference-scheduling.mdx
-│   │   │   ├── prefix-cache-scheduling.mdx
-│   │   │   ├── predicted-latency-scheduling.mdx
+│   │   │   ├── _group.json
+│   │   │   ├── inference-scheduling/
+│   │   │   │   ├── _group.json
+│   │   │   │   ├── index.mdx
+│   │   │   │   ├── prefix-cache-scheduling.mdx
+│   │   │   │   └── predicted-latency-scheduling.mdx
 │   │   │   ├── scheduling-tiered-cache.mdx
 │   │   │   ├── scheduling-pd.mdx
 │   │   │   ├── scheduling-wide-ep.mdx
@@ -577,13 +596,18 @@ llm-d/website/
 │   │   │   ├── async-processing.mdx
 │   │   │   └── model-server-autoscaling.mdx
 │   │   ├── observability/
-│   │   │   ├── monitoring-metrics-tracing.mdx
+│   │   │   ├── _group.json
+│   │   │   ├── monitoring-metrics.mdx
+│   │   │   ├── tracing.mdx
 │   │   │   ├── troubleshooting.mdx
 │   │   │   └── infrastructure.mdx
-│   │   ├── benchmarking/
-│   │   │   ├── methodology.mdx
-│   │   │   └── benchmark-results.mdx
+│   │   ├── development-guides/          # RENAMED from "Local Guides"
+│   │   │   ├── _group.json
+│   │   │   ├── accelerator-simulation.mdx
+│   │   │   ├── benchmark-methodology.mdx
+│   │   │   └── benchmark-results.mdx   # embeds llm-d.ai/prism
 │   │   └── references/
+│   │       ├── _group.json
 │   │       ├── component-versions.mdx
 │   │       ├── upstream-versions.mdx
 │   │       ├── accelerator-support-matrix.mdx

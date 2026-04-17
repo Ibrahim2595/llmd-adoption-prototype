@@ -1,11 +1,115 @@
 ---
 title: "With Precise Prefix Cache Aware Scheduling"
-description: "Configure the inference gateway to route requests based on exact KV cache prefix matches for maximum cache hit rate."
+description: "Routing requests to instances with matching KV cache prefix for reduced TTFT."
 sidebar_order: 2
 ---
+This guide demonstrates how to configure the inference scheduler to use precise prefix cache aware routing based on [vLLM KV-Events](https://github.com/vllm-project/vllm/issues/16669) data. Precise prefix cache aware routing pulls up-to-date prefix cache status from serving instances, eliminating the need for additional indexing services and increasing cache hit rate at high throughput.
 
-This page covers precise prefix cache aware scheduling — the highest-fidelity routing policy for workloads with shared prompt prefixes. Content is coming soon.
+## Hardware Requirements
 
-<Callout type="info">
-  This page is under construction. Want to contribute? Check our [Contributing Guidelines](/community) or reach out on [Slack](https://llm-d.ai/slack).
+This example out of the box uses 16 GPUs (8 replicas x 2 GPUs each) of any supported kind:
+
+- **NVIDIA GPUs**: Any NVIDIA GPU (support determined by the inferencing image used)
+- **Intel XPU/GPUs**: Intel Data Center GPU Max 1550 or compatible Intel XPU device
+
+**Using fewer accelerators**: Fewer accelerators can be used by modifying the `values.yaml` corresponding to your deployment. For example, to use only 2 GPUs with the default NVIDIA GPU deployment, update `replicas: 2` in [ms-kv-events/values.yaml](https://github.com/llm-d/llm-d/blob/main/guides/precise-prefix-cache-aware/ms-kv-events/values.yaml).
+
+## Prerequisites
+
+- Have the [proper client tools installed on your local system](https://github.com/llm-d/llm-d/blob/main/helpers/client-setup/README.md) to use this guide.
+- Configure and deploy your [Gateway control plane](https://github.com/llm-d/llm-d/blob/main/guides/prereq/gateway-provider/README.md).
+- Have the [Monitoring stack](https://github.com/llm-d/llm-d/blob/main/docs/monitoring/README.md) installed on your system.
+- Create a namespace for installation.
+
+  ```bash
+  export NAMESPACE=llm-d-precise # or any other namespace (shorter names recommended)
+  kubectl create namespace ${NAMESPACE}
+  ```
+
+- Create the `llm-d-hf-token` secret in your target namespace with the key `HF_TOKEN` matching a valid HuggingFace token to pull models.
+
+## Installation
+
+### Deploy
+
+```bash
+cd guides/precise-prefix-cache-aware
+helmfile apply -n ${NAMESPACE}
+```
+
+**Experimental**: Pod Discovery Mode — By default, the KV events are published to a centralized ZMQ endpoint on the inference scheduler. With pod discovery mode, each vLLM pod publishes KV events on its own endpoint (`tcp://*:5557`), and the inference scheduler discovers and connects to these endpoints automatically. This is useful for active-active multi-scheduler deployments.
+
+To enable pod discovery mode:
+
+```bash
+cd guides/precise-prefix-cache-aware
+POD_DISCOVERY=true helmfile apply -n ${NAMESPACE}
+```
+
+### Gateway Options
+
+```bash
+helmfile apply -e agentgateway -n ${NAMESPACE} # preferred agentgateway path
+helmfile apply -e kgateway -n ${NAMESPACE}     # deprecated migration path
+```
+
+<Callout type="warning">
+`kgateway` is deprecated in llm-d and will be removed in the next release. Prefer `agentgateway` for new self-installed inference deployments.
 </Callout>
+
+#### Intel XPU deployment
+
+```bash
+helmfile apply -e xpu -n ${NAMESPACE}
+helmfile apply -e xpu-agentgateway -n ${NAMESPACE} # with agentgateway
+```
+
+### Install HTTPRoute
+
+```bash
+kubectl apply -f httproute.yaml -n ${NAMESPACE}
+```
+
+For GKE:
+
+```bash
+kubectl apply -f httproute.gke.yaml -n ${NAMESPACE}
+```
+
+## Testing
+
+Send a basic inference request to your gateway:
+
+```bash
+kubectl port-forward -n ${NAMESPACE} service/infra-kv-events-inference-gateway-istio 8000:80
+
+export LONG_TEXT_200_WORDS="Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur."
+
+curl -s http://localhost:8000/v1/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "Qwen/Qwen3-32B",
+    "prompt": "'"$LONG_TEXT_200_WORDS"'",
+    "max_tokens": 50
+  }' | jq
+```
+
+Check the inference-scheduler's prefix-cache-scorer scores:
+
+```bash
+kubectl logs -l inferencepool=gaie-kv-events-epp --all-containers=true -n ${NAMESPACE} --tail 100 | grep "Calculated score" | grep "precise-prefix-cache-scorer/precise-prefix-cache-scorer"
+```
+
+After repeated identical requests, you should see non-zero scores on endpoints that have the prefix cached:
+
+```json
+{"msg":"Calculated score","plugin":"precise-prefix-cache-scorer/precise-prefix-cache-scorer","endpoint":{"name":"ms-kv-events-..."},"score":1}
+```
+
+## Cleanup
+
+```bash
+cd guides/precise-prefix-cache-aware
+helmfile destroy -n ${NAMESPACE}
+kubectl delete -f httproute.yaml -n ${NAMESPACE}
+```
