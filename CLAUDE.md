@@ -350,64 +350,106 @@ Layout structure (flex row):
 - `app/simulator/page.tsx` — thin server component (exports metadata), renders `<SimulatorClient />`
 - `components/simulator-client.tsx` — full client component with all interactive state
 
-### Design Philosophy
-TensorFlow Playground-inspired: inputs across the top, interactive visualization in the center, metrics below. All on one screen. **Semi-live**: changing any input immediately recalculates mock metrics — no "Run Simulation" button.
+### Design Philosophy & Narrative
+The simulator tells a story: user starts with raw vLLM (Round Robin), sees SLOs being missed, is invited to try llm-d's weighted routing, configures weights, runs the simulation, and sees improvements. The goal is to make the value of llm-d visceral — not just explained.
+
+### Default State (page load)
+Shows raw vLLM with Round Robin routing — NO llm-d yet. The visualization container is labeled "vLLM · Basic load balancer" with neutral gray styling. SLO targets for Chatbot workload are shown; at default settings (2000 req/s, 8 instances), TTFT Mean, TTFT P99, and E2E all miss their SLO targets (shown in red).
 
 ### Layout
-Full-width, gray-50 background (`dark:bg-[#1a2332]`). Three horizontal zones stacked:
-1. **Top bar** — dark gray-900 control strip (fixed height, ~80px)
-2. **Center** — system visualization (fills remaining space, scrollable)
-3. **Metrics panel** — aggregate SLO metrics + comparison features (below visualization)
+Full-width, gray-50 background (`dark:bg-[#1a2332]`). Zones stacked:
+1. **Top bar** — dark gray-900 control strip
+2. **Weighted config panel** — white bar, only visible when Routing = "Weighted (llm-d)"
+3. **Scrollable content** — visualization → invitation banner → SLO metrics table
 
 ### Top Bar (Controls)
-Dark `bg-gray-900` strip with white text. Horizontal row of labeled controls (labels: gray-400, text-xs, uppercase, tracking-wide):
-1. **Workload** dropdown: Chatbot, Agentic, RL
-2. **Model** dropdown: qwen/qwen3-14b, meta-llama/Llama-3.1-70B, deepseek-ai/DeepSeek-R1, mistralai/Mixtral-8x7B
-3. **Accelerator** dropdown: NVIDIA H100, NVIDIA A100 80GB, AMD MI300X
-4. **Routing Strategy** dropdown: Queue Depth (default), Precise Prefix Caching, KV Utilization
-5. **Request Rate** slider (1–100 req/s) — purple (`#7B2D8E`) track fill, current value shown inline
-6. **Instances** stepper (+ / − buttons, range 1–8)
+Dark `bg-gray-900` strip. Controls:
+1. **Workload** dropdown: Chatbot (default), Agentic, RL
+2. **Model** dropdown: qwen/qwen3-14b (default), meta-llama/Llama-3.1-70B, deepseek-ai/DeepSeek-R1, mistralai/Mixtral-8x7B
+3. **Accelerator** dropdown: NVIDIA H100 (default), NVIDIA A100 80GB, AMD MI300X
+4. **Routing Strategy** dropdown — TWO options only:
+   - "Round Robin (vLLM baseline)" — default
+   - "Weighted (llm-d)"
+5. **Request Rate** slider, 1000–6000 req/s, default 2000 — purple track fill
+6. **Instances** stepper, 4–16, default 8
 
-### Center: System Visualization
-- **Workload source box** (top center): white card showing selected workload + request rate
-- **Animated flow dots**: small purple dots flowing downward from the workload box. Count and speed scale with request rate. CSS keyframe animation (`flowDown`).
-- **llm-d container**: large rounded rectangle (white/dark, gray-200 border). Shows "llm-d" label + routing strategy badge.
-  - **Instance cards** inside: number matches Instances control (1–8). Each card shows: instance_N title, Queue Depth, Batch Size, KV Utilization (progress bar, red when >80%), Cache Hit Rate (progress bar), Completed Requests, accelerator short name footer.
-  - Cards with `queueDepth > 5` get amber border glow (hot instance indicator).
-  - Cards arranged in a flex-wrap row.
+Changing any control resets `simulationRun` to false and clears llm-d rows (stale data avoided).
 
-### Metrics Panel
-Below the visualization, inside a white rounded card:
-- **llm-d metrics row** (5 cards): TTFT Mean, TTFT P99, E2E Latency, Throughput, Requests/sec
-  - Color coding: green/amber/red based on SLO thresholds
-  - When baseline comparison is active, each card shows a green improvement badge (e.g., "↓ 30%")
-- **vLLM Baseline row** (optional, toggled): dashed gray-50 cards showing worse baseline metrics
-  - Baseline multipliers: TTFT ×1.4, TTFT P99 ×1.45, E2E ×1.3, Throughput ×0.7, req/s ×0.72
-- **Toggle**: "Compare with vLLM baseline" pill button (filled when active)
-- **Save Scenario** button + saved scenario chips (with × to remove)
-- **Compare Scenarios** button appears when ≥2 scenarios saved → opens comparison modal
+### Weighted Config Panel
+Appears below the top bar only when Routing = "Weighted (llm-d)". White bg, border-b. Contains:
+- Heading: "llm-d Weighted Routing Configuration" + helper text
+- Three number inputs: Precise-Prefix-Cache (default 2), Queue-Depth (default 1), KV-Utilization (default 1)
+- "Run Simulation" button (purple bg) — triggers simulation snapshot and adds a row to the metrics table
+
+The visualization does NOT update until "Run Simulation" is clicked. Before that, it stays in vLLM mode.
+
+### System Visualization
+Four-layer stack inside a bordered container:
+- **Layer 1**: Incoming Requests box — workload + req/s + animated purple flow dots
+- **Layer 2**: Routing layer — "Round Robin" in vLLM mode, "Weighted: PC=N, QD=N, KV=N" in llm-d mode
+- **Orthogonal tree connectors** (SVG) between routing and instances, and instances to hardware
+- **Layer 3**: Instance cards (count = Instances control) — Queue, Batch, KV Util (progress bar), Cache Hit (progress bar), Done requests, accelerator footer
+- **Layer 4**: Hardware bar — "N× accelerator name"
+
+**vLLM mode** (default, also when Weighted selected but before Run Simulation):
+- Container border: gray-200; header: gray-50 bg, label "vLLM · Basic load balancer"
+- Routing layer: gray bg, blue dot indicator
+- Instance cards: amber border glow on hot instances (queue > 5); low cache hit rates (~35%)
+- No purple accents anywhere in the container
+
+**llm-d mode** (after Run Simulation with Weighted routing):
+- Container border: purple-300 (transitions via CSS `duration-500`)
+- Header: purple-50 bg, label "llm-d · Kubernetes-native distributed inference" + "Intelligent Routing" badge
+- Routing layer: purple-50 bg, purple dot indicator, weighted label
+- Instance cards: purple border, higher cache hit rates (green text), more balanced queues
+
+### Invitation Banner
+Appears between visualization and metrics table when: `routing === 'Round Robin' && missedSloCount >= 2`.
+- purple-light bg (`#F3E8F9`), 4px purple left border, rounded-lg
+- Lightbulb SVG icon + message: "Your SLOs aren't being met. Try llm-d's weighted routing to improve performance."
+- "Switch to Weighted →" button with pulse animation — switches Routing dropdown and shows config panel
+- Banner disappears once routing changes to Weighted
+
+### SLO Metrics Table
+Table-style panel. Rows:
+
+**Row 1 — SLO Targets** (gray-50 bg): editable number inputs showing target values. Defaults reset when workload changes:
+- Chatbot: TTFT Mean 100ms, TTFT P99 200ms, E2E 5000ms, Throughput 5000 tok/s
+- Agentic: TTFT Mean 150ms, TTFT P99 300ms, E2E 8000ms, Throughput 4000 tok/s
+- RL:      TTFT Mean 500ms, TTFT P99 1000ms, E2E 30000ms, Throughput 10000 tok/s
+
+**Row 2 — vLLM Baseline** (always visible, live-updating with jitter): shows Round Robin metrics. Colored dot + value: green if meeting target, red if missing. At default settings: TTFT Mean, TTFT P99, E2E all show red.
+
+**Rows 3+ — llm-d runs** (purple-tinted bg): added each time "Run Simulation" is clicked. Show snapshot metrics (not live). Each row: purple dot + green metric values + % improvement badge vs baseline (e.g., "↓ 35%"). All should meet SLO targets.
+
+**Panel header actions**:
+- "Save Baseline" — saves current vLLM baseline as a named scenario
+- "Save llm-d" — appears when ≥1 llm-d run exists, saves the most recent run
+- "Compare" — appears when ≥2 scenarios saved, opens comparison modal
+
+**Saved scenario chips** below the table with × to remove.
 
 ### Comparison Modal
-Full-screen overlay. Table with one column per saved scenario, one row per metric. Best value in row: `text-green-600`, worst: `text-red-600`.
+Full-screen overlay. Table: one column per saved scenario, one row per metric. Best value: `text-green-600`, worst: `text-red-600`.
 
 ### Mock Data Behavior
 
-**Base values (H100, qwen3-14b, Chatbot, Queue Depth):**
-- TTFT base: 30ms × model_multiplier × accelerator_multiplier
-- E2E base: 4677ms × model_multiplier × accelerator_multiplier
-- Throughput base: 3148 tok/s ÷ model_multiplier ÷ accelerator_multiplier × instances
+**Load factor**: `lf = clamp(requestRate / (instances × 250), 0, 3.0)` — at defaults (2000/8), lf = 1.0 (nominal load)
 
-**Input → metric relationships:**
-- Request Rate ↑: queue depth ↑, KV utilization ↑, TTFT/E2E ↑, throughput plateaus at saturation
-- Instances ↑: per-instance load ↓, aggregate throughput ↑
-- Model (70B, DeepSeek-R1): higher base latency multipliers (2.1×, 2.6×)
-- Accelerator (A100, MI300X): higher latency multipliers (1.35×, 1.15×)
-- Workload (Agentic): higher queue multiplier (1.5×), bursty; (RL): higher batch, latency-tolerant
-- Routing (Prefix Caching): cache hit 70–90%, TTFT ×0.65 reduction; (KV Util): best throughput multiplier (1.1×)
+**Round Robin metrics** (live, jitter seed ticks every 3s):
+- `ttftMean = 30ms × modelMult × accelMult × workloadLatMult × (1 + lf × 3.5)` — at lf=1: 135ms → misses 100ms SLO
+- `ttftP99 = ttftMean × 2.3` — at lf=1: ~310ms → misses 200ms SLO
+- `e2eMean = 4677ms × modelMult × accelMult × workloadLatMult × (1 + lf × 0.25)` — at lf=1: ~5846ms → misses 5000ms SLO
+- `throughput = (3148/modelMult/accelMult) × instances × saturationFactor` — easily meets 5000 tok/s (green)
 
-**Organic jitter**: seed increments every 3 seconds → values shift ±5% naturally without being jumpy.
+**Weighted metrics** (snapshot at Run Simulation click, timestamp-based seed):
+- `ttftReduction = pcW×0.50 + qdW×0.08 + kvW×0.05` — at default (2/1/1): 0.2825 → ttftMean ≈ 97ms < 100ms ✓
+- `ttftP99 = ttftMean × 1.9` — better tail with intelligent routing → ~184ms < 200ms ✓
+- `e2eReduction = qdW×0.30 + kvW×0.18 + pcW×0.06` — at default: 0.15 → e2eMean ≈ 4969ms < 5000ms ✓
+- `throughputBoost = 1 + kvW×0.30 + qdW×0.15 + pcW×0.10` — throughput increases
+- Weights: `pcW = pc/(pc+qd+kv)`, etc.
 
-**Saved scenarios**: `varyMetrics()` applies ±12% random variance so comparisons show real differences.
+**Instance metrics** differ by mode: Round Robin creates hot-spots (deterministic position bias → uneven queue depths, low cache hits ~35%); Weighted has more balanced distribution (cache hits scale with pcW, queue variance reduces with qdW).
 
 All mock — simulation backend connects later.
 
